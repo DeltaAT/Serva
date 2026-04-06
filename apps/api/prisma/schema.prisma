@@ -1,0 +1,124 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Configurations {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  value String
+}
+
+model Users {
+  id       Int      @id @default(autoincrement())
+  username String   @unique
+  isLocked Boolean
+  orders   Orders[]
+}
+
+model MenuCategories {
+  id              Int           @id @default(autoincrement())
+  name            String
+  description     String
+  isLocked        Boolean
+  weight          Int
+  printer_id      Int
+  orderDisplay_id Int
+  printer         Printers      @relation("PrinterMenuCategories", fields: [printer_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  orderDisplay    OrderDisplays @relation("DisplayMenuCategories", fields: [orderDisplay_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  menuItems       MenuItems[]
+
+  @@index([printer_id])
+  @@index([orderDisplay_id])
+}
+
+model MenuItems {
+  id              Int                 @id @default(autoincrement())
+  name            String
+  description     String
+  weight          Int
+  price           Float
+  isLocked        Boolean
+  menuCategory_id Int
+  menuCategory    MenuCategories      @relation(fields: [menuCategory_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  orderItems      OrderItems[]
+  stockItems      StockItemMenuItem[]
+
+  @@index([menuCategory_id])
+}
+
+model Tables {
+  id       Int      @id @default(autoincrement())
+  name     String
+  weight   Int
+  isLocked Boolean
+  orders   Orders[]
+}
+
+model StockItems {
+  id        Int                 @id @default(autoincrement())
+  name      String
+  quantity  Int
+  menuItems StockItemMenuItem[]
+}
+
+model StockItemMenuItem {
+  stockItem_id     Int
+  menuItem_id      Int
+  quantityRequired Int
+  stockItem        StockItems @relation(fields: [stockItem_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  menuItem         MenuItems  @relation(fields: [menuItem_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([stockItem_id, menuItem_id])
+  @@index([menuItem_id])
+}
+
+model Orders {
+  id         Int          @id @default(autoincrement())
+  timestamp  DateTime
+  table_id   Int
+  user_id    Int
+  table      Tables       @relation(fields: [table_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  user       Users        @relation(fields: [user_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  orderItems OrderItems[]
+
+  @@index([table_id])
+  @@index([user_id])
+}
+
+model OrderItems {
+  order_id        Int
+  menuItem_id     Int
+  quantity        Int
+  specialRequests String
+  order           Orders    @relation(fields: [order_id], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  menuItem        MenuItems @relation(fields: [menuItem_id], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([order_id, menuItem_id])
+  @@index([menuItem_id])
+}
+
+model Printers {
+  id                Int              @id @default(autoincrement())
+  name              String
+  ipAddress         String
+  connectionDetails String
+  menuCategories    MenuCategories[] @relation("PrinterMenuCategories")
+}
+
+model OrderDisplays {
+  id                Int              @id @default(autoincrement())
+  name              String
+  ipAddress         String
+  connectionDetails String
+  menuCategories    MenuCategories[] @relation("DisplayMenuCategories")
+}
