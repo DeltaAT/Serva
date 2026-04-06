@@ -50,6 +50,9 @@ importers:
       '@prisma/client':
         specifier: ^7.6.0
         version: 7.6.0(prisma@7.6.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(better-sqlite3@12.8.0)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@6.0.2))(typescript@6.0.2)
+      '@serva/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       cors:
         specifier: ^2.8.6
         version: 2.8.6
@@ -78,6 +81,9 @@ importers:
 
   apps/waiter-web:
     dependencies:
+      '@serva/shared-types':
+        specifier: workspace:*
+        version: link:../../packages/shared-types
       react:
         specifier: ^19.2.4
         version: 19.2.4
@@ -121,6 +127,16 @@ importers:
       vite:
         specifier: ^8.0.4
         version: 8.0.4(@emnapi/core@1.9.2)(@emnapi/runtime@1.9.2)(@types/node@24.12.2)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)
+
+  packages/shared-types:
+    dependencies:
+      zod:
+        specifier: ^4.1.0
+        version: 4.3.6
+    devDependencies:
+      typescript:
+        specifier: ~6.0.2
+        version: 6.0.2
 
 packages:
 

@@ -3,6 +3,22 @@ import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
 import './App.css'
+import {
+  OrderSubmitRequestSchema,
+  TableQrResolveRequestSchema,
+} from '@serva/shared-types'
+
+const contractSmokeTests = {
+  tableQrResolveRequest: TableQrResolveRequestSchema.safeParse({
+    qrValue: 'table-qr-1',
+  }),
+  orderSubmitRequest: OrderSubmitRequestSchema.safeParse({
+    tableId: 1,
+    items: [{ menuItemId: 1, quantity: 1, specialRequests: 'No onions' }],
+  }),
+}
+
+void contractSmokeTests
 
 function App() {
   const [count, setCount] = useState(0)
