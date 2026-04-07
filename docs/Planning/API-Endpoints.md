@@ -1,18 +1,4 @@
-﻿﻿# API Endpoints (Planning)
-
-> Ziel: Eine schlanke, ressourcenorientierte REST-API zwischen **Handy-Browser** / **Desktop App (WPF)** und **HostServer**.
-> Fokus: Menü/Tische/User/Lager verwalten, Bestellungen aufnehmen, an Drucker/Displays routen.
-
----
-
-## Überblick
-
-- **Base URL (lokal/Host):** `http://{host}:{port}/api`
-- **Content-Type:** `application/json; charset=utf-8`
-- **Auth (Vorschlag):** JWT Bearer via `Authorization: Bearer <token>`
-- **Error Format:** [`ProblemDetails`](https://datatracker.ietf.org/doc/html/rfc7807) (typisch ASP.NET)
-- **Pagination (optional):** `?page=1&pageSize=50`
-- **Sortierung (optional):** `?sort=weight,name` (kommagetrennt)
+﻿# API Endpoints (Planning)
 
 ### Rollen (vereinfachter Vorschlag)
 - `admin`: volle Rechte (Desktop)
@@ -305,7 +291,7 @@ Testdruck.
 ### GET `/orders`
 Bestellungen suchen (Verlauf / Übersicht).
 
-**Auth:** `admin` *(oder `waiter` mit Einschränkung)*
+**Auth:** `admin`, `waiter` (nur eigene Bestellungen)
 
 **Query (optional)**
 - `tableId=<id>`
@@ -340,11 +326,6 @@ Neue Bestellung anlegen (Handy-Browser).
 Details inkl. Items.
 
 **Auth:** `admin` *(oder `waiter` eingeschränkt)*
-
-### POST `/orders/{orderId}/dispatch`
-Triggert Drucken/Displays (falls nicht automatisch bei `POST /orders`).
-
-**Auth:** `admin`
 
 ---
 
@@ -400,6 +381,18 @@ Neues Event → neue SQLite DB Datei (laut Mindmap).
 
 **Statuscodes:** `201`, `400`, `409`
 
+### POST `/admin/events/{eventId}/activate`
+Aktiviert ein Event global.
+
+**Auth:** `admin`
+
+**Verhalten:** Wenn bereits ein anderes Event aktiv ist, wird dieses automatisch deaktiviert.
+
+### POST `/admin/events/{eventId}/deactivate`
+Deaktiviert ein Event (danach kann es auch kein aktives Event geben).
+
+**Auth:** `admin`
+
 ### GET `/admin/event-passcode`
 Gibt den aktuellen gemeinsamen Login-Code zurück (damit der Desktop ihn anzeigen kann).
 
@@ -423,6 +416,10 @@ Setzt/rotiert den gemeinsamen Login-Code.
 Server neu starten.
 
 **Auth:** `admin`
+
+---
+
+## Push Notifications (Planung)
 
 ---
 

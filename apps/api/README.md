@@ -1,0 +1,72 @@
+﻿# Serva API
+
+## Quick start
+
+```bash
+pnpm --filter @serva/shared-types build
+pnpm --filter api dev
+```
+
+Swagger UI: `http://localhost:8787/documentation`
+
+## Structure
+
+- `src/index.ts` - process entrypoint (listen)
+- `src/app.ts` - Fastify app composition
+- `src/plugins/*` - cross-cutting hooks (error handling, jwt/auth guards)
+- `src/domain/*` - event registry, password hashing, auth services
+- `src/routes/*` - route registration by feature
+
+## Active event semantics
+
+- Exactly one event can be active at once.
+- Activating an event automatically deactivates a currently active event.
+- Endpoints marked with `requiresActiveEvent` return `NO_ACTIVE_EVENT` (`409`) when no event is active.
+- Each event gets its own SQLite file under `apps/api/data/events/event-<id>.db`.
+- Control metadata (active event, admin credentials, passcode hash) is stored in `apps/api/data/control.db`.
+
+## Auth model
+
+- `master` can create/activate/deactivate/close events (`/admin/*`).
+- `admin` is event-scoped (`eventId`) and logs in with event-specific credentials.
+- `waiter` logs in with `username + eventPasscode` against the currently active event.
+
+Configure in `apps/api/.env`:
+- `MASTER_USERNAME`
+- `MASTER_PASSWORD`
+- `JWT_SECRET`
+
+### Master flow (create event)
+
+PowerShell example:
+
+```powershell
+$MASTER_LOGIN = Invoke-RestMethod -Method Post -Uri "http://localhost:8787/auth/master/login" -ContentType "application/json" -Body '{"username":"master","password":"dev-master-password"}'
+$MASTER_TOKEN = $MASTER_LOGIN.accessToken
+$HEADERS = @{ Authorization = "Bearer $MASTER_TOKEN" }
+
+Invoke-RestMethod -Method Post -Uri "http://localhost:8787/admin/events" -Headers $HEADERS -ContentType "application/json" -Body '{"eventName":"Sommerfest","eventPasscode":"1234","adminUsername":"chef","adminPassword":"secret123"}'
+Invoke-RestMethod -Method Post -Uri "http://localhost:8787/admin/events/1/activate" -Headers $HEADERS
+Invoke-RestMethod -Method Get -Uri "http://localhost:8787/admin/events/active" -Headers $HEADERS
+```
+
+### Event admin flow
+
+```powershell
+$EVENT_ADMIN_LOGIN = Invoke-RestMethod -Method Post -Uri "http://localhost:8787/auth/admin/login" -ContentType "application/json" -Body '{"eventId":1,"username":"chef","password":"secret123"}'
+$EVENT_ADMIN_TOKEN = $EVENT_ADMIN_LOGIN.accessToken
+```
+
+## Waiter auth flow
+
+PowerShell example:
+
+```powershell
+$LOGIN = Invoke-RestMethod -Method Post -Uri "http://localhost:8787/auth/login" -ContentType "application/json" -Body '{"username":"anna","eventPasscode":"1234"}'
+$ACCESS = $LOGIN.accessToken
+$WAITER_HEADERS = @{ Authorization = "Bearer $ACCESS" }
+
+Invoke-RestMethod -Method Get -Uri "http://localhost:8787/auth/me" -Headers $WAITER_HEADERS
+Invoke-RestMethod -Method Post -Uri "http://localhost:8787/orders" -Headers $WAITER_HEADERS -ContentType "application/json" -Body '{"tableId":1,"items":[{"menuItemId":1,"quantity":2}]}'
+```
+
