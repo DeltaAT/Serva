@@ -176,10 +176,15 @@ export type WaiterSessionStartRequest = z.infer<
   typeof WaiterSessionStartRequestSchema
 >;
 
+export const SessionRoleSchema = z.enum(["master", "admin", "waiter"]);
+export type SessionRole = z.infer<typeof SessionRoleSchema>;
+
 export const WaiterSessionStartResponseSchema = z
   .object({
     accessToken: nonEmptyString,
     expiresInSeconds: z.number().int().positive(),
+    role: z.literal("waiter"),
+    eventId: positiveInt,
     refreshToken: z.string().trim().min(1).optional(),
     user: UserDtoSchema.optional(),
   })
@@ -187,6 +192,55 @@ export const WaiterSessionStartResponseSchema = z
 export type WaiterSessionStartResponse = z.infer<
   typeof WaiterSessionStartResponseSchema
 >;
+
+export const AdminSessionStartRequestSchema = z
+  .object({
+    eventId: positiveInt,
+    username: nonEmptyString,
+    password: nonEmptyString,
+  })
+  .strict();
+export type AdminSessionStartRequest = z.infer<
+  typeof AdminSessionStartRequestSchema
+>;
+
+export const AdminSessionStartResponseSchema = z
+  .object({
+    accessToken: nonEmptyString,
+    expiresInSeconds: z.number().int().positive(),
+    role: z.literal("admin"),
+    eventId: positiveInt,
+  })
+  .strict();
+export type AdminSessionStartResponse = z.infer<
+  typeof AdminSessionStartResponseSchema
+>;
+
+export const SessionPrincipalSchema = z
+  .object({
+    role: SessionRoleSchema,
+    eventId: positiveInt.optional(),
+    user: UserDtoSchema.optional(),
+  })
+  .strict();
+export type SessionPrincipal = z.infer<typeof SessionPrincipalSchema>;
+
+export const MasterSessionStartRequestSchema = z
+  .object({
+    username: nonEmptyString,
+    password: nonEmptyString,
+  })
+  .strict();
+export type MasterSessionStartRequest = z.infer<typeof MasterSessionStartRequestSchema>;
+
+export const MasterSessionStartResponseSchema = z
+  .object({
+    accessToken: nonEmptyString,
+    expiresInSeconds: z.number().int().positive(),
+    role: z.literal("master"),
+  })
+  .strict();
+export type MasterSessionStartResponse = z.infer<typeof MasterSessionStartResponseSchema>;
 
 export const TableQrResolveRequestSchema = z
   .object({
@@ -199,6 +253,49 @@ export type TableQrResolveRequest = z.infer<
 
 export const TableQrResolveResponseSchema = TableDtoSchema;
 export type TableQrResolveResponse = TableDto;
+
+export const EventDtoSchema = z
+  .object({
+    id: positiveInt,
+    eventName: nonEmptyString,
+    adminUsername: nonEmptyString,
+    isActive: z.boolean(),
+    createdAt: z.string().datetime(),
+    closedAt: z.string().datetime().optional(),
+  })
+  .strict();
+export type EventDto = z.infer<typeof EventDtoSchema>;
+
+export const AdminEventCreateRequestSchema = z
+  .object({
+    eventName: nonEmptyString,
+    eventPasscode: nonEmptyString,
+    adminUsername: nonEmptyString,
+    adminPassword: nonEmptyString,
+  })
+  .strict();
+export type AdminEventCreateRequest = z.infer<typeof AdminEventCreateRequestSchema>;
+
+export const ActiveEventResponseSchema = EventDtoSchema;
+export type ActiveEventResponse = EventDto;
+
+export const AdminEventCreateResponseSchema = EventDtoSchema;
+export type AdminEventCreateResponse = EventDto;
+
+export const AdminEventActivateResponseSchema = EventDtoSchema;
+export type AdminEventActivateResponse = EventDto;
+
+export const AdminEventDeactivateResponseSchema = EventDtoSchema;
+export type AdminEventDeactivateResponse = EventDto;
+
+export const AuthLoginRequestSchema = WaiterSessionStartRequestSchema;
+export type AuthLoginRequest = WaiterSessionStartRequest;
+
+export const AuthLoginResponseSchema = WaiterSessionStartResponseSchema;
+export type AuthLoginResponse = WaiterSessionStartResponse;
+
+export const AuthMeResponseSchema = SessionPrincipalSchema;
+export type AuthMeResponse = SessionPrincipal;
 
 export const OrderSubmitRequestSchema = z
   .object({
