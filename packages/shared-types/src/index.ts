@@ -134,6 +134,101 @@ export const TableDtoSchema = z
   .strict();
 export type TableDto = z.infer<typeof TableDtoSchema>;
 
+export const TablesQuerySchema = z
+  .object({
+    locked: z
+      .union([z.boolean(), z.string().trim().toLowerCase()])
+      .transform((value, ctx) => {
+        if (typeof value === "boolean") {
+          return value;
+        }
+
+        if (value === "true") {
+          return true;
+        }
+
+        if (value === "false") {
+          return false;
+        }
+
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Expected true or false",
+        });
+        return z.NEVER;
+      })
+      .optional()
+      .describe("Filter by lock state. Example: ?locked=false"),
+    sort: z
+      .literal("weight,name")
+      .optional()
+      .describe("Supported sort key. Example: ?sort=weight,name"),
+  })
+  .strict();
+export type TablesQuery = z.infer<typeof TablesQuerySchema>;
+
+export const TableCreateRequestSchema = z
+  .object({
+    name: nonEmptyString,
+    weight: z.number().int().optional(),
+    isLocked: z.boolean().optional(),
+  })
+  .strict();
+export type TableCreateRequest = z.infer<typeof TableCreateRequestSchema>;
+
+export const TableBulkCreateRequestSchema = z
+  .object({
+    rows: z.array(nonEmptyString).min(1),
+    from: z.number().int().positive(),
+    to: z.number().int().positive(),
+    lockNew: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => value.to >= value.from, {
+    message: "to must be greater than or equal to from",
+    path: ["to"],
+  });
+export type TableBulkCreateRequest = z.infer<typeof TableBulkCreateRequestSchema>;
+
+export const TableUpdateRequestSchema = z
+  .object({
+    name: nonEmptyString.optional(),
+    weight: z.number().int().optional(),
+    isLocked: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  });
+export type TableUpdateRequest = z.infer<typeof TableUpdateRequestSchema>;
+
+export const TableParamsSchema = z
+  .object({
+    tableId: z.coerce.number().int().positive(),
+  })
+  .strict();
+export type TableParams = z.infer<typeof TableParamsSchema>;
+
+export const TablesResponseSchema = z
+  .object({
+    tables: z.array(TableDtoSchema),
+  })
+  .strict();
+export type TablesResponse = z.infer<typeof TablesResponseSchema>;
+
+export const TableCreateResponseSchema = TableDtoSchema;
+export type TableCreateResponse = TableDto;
+
+export const TableBulkCreateResponseSchema = z
+  .object({
+    tables: z.array(TableDtoSchema),
+  })
+  .strict();
+export type TableBulkCreateResponse = z.infer<typeof TableBulkCreateResponseSchema>;
+
+export const TableUpdateResponseSchema = TableDtoSchema;
+export type TableUpdateResponse = TableDto;
+
 const optionalBooleanQuerySchema = z
   .union([z.boolean(), z.string().trim().toLowerCase()])
   .transform((value, ctx) => {

@@ -15,6 +15,7 @@ import { registerAdminEventRoutes } from "./routes/admin-events";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerMenuRoutes } from "./routes/menu";
 import { registerOpsRoutes } from "./routes/operations";
+import { registerTableRoutes } from "./routes/tables";
 
 export async function buildApp() {
   const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
@@ -37,6 +38,7 @@ export async function buildApp() {
         { name: "admin-events", description: "Admin event lifecycle endpoints" },
         { name: "auth", description: "Authentication endpoints" },
         { name: "menu", description: "Menu categories and items" },
+        { name: "tables", description: "Table management endpoints" },
       ],
       components: {
         securitySchemes: {
@@ -66,6 +68,7 @@ export async function buildApp() {
   registerAdminEventRoutes(app);
   registerAuthRoutes(app);
   registerMenuRoutes(app);
+  registerTableRoutes(app);
 
   return app;
 }
