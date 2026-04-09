@@ -9,6 +9,13 @@ pnpm --filter api dev
 
 Swagger UI: `http://localhost:8787/documentation`
 
+## Tests
+
+```bash
+pnpm --filter @serva/shared-types build
+pnpm --filter api test
+```
+
 ## Structure
 
 - `src/index.ts` - process entrypoint (listen)
@@ -69,4 +76,15 @@ $WAITER_HEADERS = @{ Authorization = "Bearer $ACCESS" }
 Invoke-RestMethod -Method Get -Uri "http://localhost:8787/auth/me" -Headers $WAITER_HEADERS
 Invoke-RestMethod -Method Post -Uri "http://localhost:8787/orders" -Headers $WAITER_HEADERS -ContentType "application/json" -Body '{"tableId":1,"items":[{"menuItemId":1,"quantity":2}]}'
 ```
+
+## Menu endpoints
+
+- `GET /menu/categories?locked=false&includeRouting=true`
+- `GET /menu/items?categoryId=1&sort=weight,name`
+- `POST /menu/categories` (`admin`)
+- `PATCH /menu/categories/{categoryId}` (`admin`)
+- `DELETE /menu/categories/{categoryId}` (`admin`)
+- `POST /menu/items` (`admin`)
+- `PATCH /menu/items/{menuItemId}` (`admin`)
+- `DELETE /menu/items/{menuItemId}` (`admin`)
 

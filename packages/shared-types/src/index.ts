@@ -134,6 +134,179 @@ export const TableDtoSchema = z
   .strict();
 export type TableDto = z.infer<typeof TableDtoSchema>;
 
+const optionalBooleanQuerySchema = z
+  .union([z.boolean(), z.string().trim().toLowerCase()])
+  .transform((value, ctx) => {
+    if (typeof value === "boolean") {
+      return value;
+    }
+
+    if (value === "true") {
+      return true;
+    }
+
+    if (value === "false") {
+      return false;
+    }
+
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Expected true or false",
+    });
+    return z.NEVER;
+  });
+
+export const MenuCategoryDtoSchema = z
+  .object({
+    id: positiveInt,
+    name: nonEmptyString,
+    description: z.string(),
+    isLocked: z.boolean(),
+    weight: z.number().int(),
+    printerId: positiveInt.optional(),
+    orderDisplayId: positiveInt.optional(),
+  })
+  .strict();
+export type MenuCategoryDto = z.infer<typeof MenuCategoryDtoSchema>;
+
+export const MenuItemDtoSchema = z
+  .object({
+    id: positiveInt,
+    name: nonEmptyString,
+    description: z.string(),
+    weight: z.number().int(),
+    price: z.number().nonnegative(),
+    isLocked: z.boolean(),
+    menuCategoryId: positiveInt,
+  })
+  .strict();
+export type MenuItemDto = z.infer<typeof MenuItemDtoSchema>;
+
+export const MenuCategoriesQuerySchema = z
+  .object({
+    locked: optionalBooleanQuerySchema
+      .optional()
+      .describe("Filter by lock state. Example: ?locked=true"),
+    includeRouting: optionalBooleanQuerySchema
+      .optional()
+      .describe("Include printer/display routing fields. Example: ?includeRouting=true"),
+  })
+  .strict();
+export type MenuCategoriesQuery = z.infer<typeof MenuCategoriesQuerySchema>;
+
+export const MenuItemsQuerySchema = z
+  .object({
+    categoryId: z.coerce
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Filter by category id. Example: ?categoryId=2"),
+    locked: optionalBooleanQuerySchema
+      .optional()
+      .describe("Filter by lock state. Example: ?locked=false"),
+    sort: z
+      .literal("weight,name")
+      .optional()
+      .describe("Supported sort key. Example: ?sort=weight,name"),
+  })
+  .strict();
+export type MenuItemsQuery = z.infer<typeof MenuItemsQuerySchema>;
+
+export const MenuCategoriesResponseSchema = z
+  .object({
+    categories: z.array(MenuCategoryDtoSchema),
+  })
+  .strict();
+export type MenuCategoriesResponse = z.infer<typeof MenuCategoriesResponseSchema>;
+
+export const MenuItemsResponseSchema = z
+  .object({
+    items: z.array(MenuItemDtoSchema),
+  })
+  .strict();
+export type MenuItemsResponse = z.infer<typeof MenuItemsResponseSchema>;
+
+export const MenuCategoryParamsSchema = z
+  .object({
+    categoryId: z.coerce.number().int().positive(),
+  })
+  .strict();
+export type MenuCategoryParams = z.infer<typeof MenuCategoryParamsSchema>;
+
+export const MenuItemParamsSchema = z
+  .object({
+    menuItemId: z.coerce.number().int().positive(),
+  })
+  .strict();
+export type MenuItemParams = z.infer<typeof MenuItemParamsSchema>;
+
+export const MenuCategoryCreateRequestSchema = z
+  .object({
+    name: nonEmptyString,
+    description: z.string().max(500).optional(),
+    weight: z.number().int().optional(),
+    isLocked: z.boolean().optional(),
+    printerId: positiveInt.optional(),
+    orderDisplayId: positiveInt.optional(),
+  })
+  .strict();
+export type MenuCategoryCreateRequest = z.infer<typeof MenuCategoryCreateRequestSchema>;
+
+export const MenuCategoryUpdateRequestSchema = z
+  .object({
+    name: nonEmptyString.optional(),
+    description: z.string().max(500).optional(),
+    weight: z.number().int().optional(),
+    isLocked: z.boolean().optional(),
+    printerId: positiveInt.optional(),
+    orderDisplayId: positiveInt.optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  });
+export type MenuCategoryUpdateRequest = z.infer<typeof MenuCategoryUpdateRequestSchema>;
+
+export const MenuItemCreateRequestSchema = z
+  .object({
+    name: nonEmptyString,
+    description: z.string().max(500).optional(),
+    weight: z.number().int().optional(),
+    price: z.number().nonnegative(),
+    isLocked: z.boolean().optional(),
+    menuCategoryId: positiveInt,
+  })
+  .strict();
+export type MenuItemCreateRequest = z.infer<typeof MenuItemCreateRequestSchema>;
+
+export const MenuItemUpdateRequestSchema = z
+  .object({
+    name: nonEmptyString.optional(),
+    description: z.string().max(500).optional(),
+    weight: z.number().int().optional(),
+    price: z.number().nonnegative().optional(),
+    isLocked: z.boolean().optional(),
+    menuCategoryId: positiveInt.optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  });
+export type MenuItemUpdateRequest = z.infer<typeof MenuItemUpdateRequestSchema>;
+
+export const MenuCategoryCreateResponseSchema = MenuCategoryDtoSchema;
+export type MenuCategoryCreateResponse = MenuCategoryDto;
+
+export const MenuCategoryUpdateResponseSchema = MenuCategoryDtoSchema;
+export type MenuCategoryUpdateResponse = MenuCategoryDto;
+
+export const MenuItemCreateResponseSchema = MenuItemDtoSchema;
+export type MenuItemCreateResponse = MenuItemDto;
+
+export const MenuItemUpdateResponseSchema = MenuItemDtoSchema;
+export type MenuItemUpdateResponse = MenuItemDto;
+
 export const OrderSubmitItemRequestSchema = z
   .object({
     menuItemId: positiveInt,
