@@ -13,6 +13,7 @@ import { registerErrorHandler } from "./plugins/error-handler";
 import { registerJwtAuthGuard } from "./plugins/jwt-auth-guard";
 import { registerAdminEventRoutes } from "./routes/admin-events";
 import { registerAuthRoutes } from "./routes/auth";
+import { registerMenuRoutes } from "./routes/menu";
 import { registerOpsRoutes } from "./routes/operations";
 
 export async function buildApp() {
@@ -35,6 +36,7 @@ export async function buildApp() {
       tags: [
         { name: "admin-events", description: "Admin event lifecycle endpoints" },
         { name: "auth", description: "Authentication endpoints" },
+        { name: "menu", description: "Menu categories and items" },
       ],
       components: {
         securitySchemes: {
@@ -63,6 +65,7 @@ export async function buildApp() {
   registerOpsRoutes(app);
   registerAdminEventRoutes(app);
   registerAuthRoutes(app);
+  registerMenuRoutes(app);
 
   return app;
 }
