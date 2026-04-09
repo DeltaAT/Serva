@@ -88,3 +88,12 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:8787/orders" -Headers $WAI
 - `PATCH /menu/items/{menuItemId}` (`admin`)
 - `DELETE /menu/items/{menuItemId}` (`admin`)
 
+## Table endpoints
+
+- `GET /tables?locked=false&sort=weight,name` (`waiter/admin`)
+- `POST /tables` (`admin`)
+- `POST /tables/bulk` (`admin`)
+- `PATCH /tables/{tableId}` (`admin`)
+- `GET /tables/{tableId}/qr` (`admin`)
+- `GET /tables/qr.pdf` (`admin`)
+
