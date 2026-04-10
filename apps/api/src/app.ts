@@ -16,6 +16,7 @@ import { registerAuthRoutes } from "./routes/auth";
 import { registerMenuRoutes } from "./routes/menu";
 import { registerOpsRoutes } from "./routes/operations";
 import { registerTableRoutes } from "./routes/tables";
+import { registerUserRoutes } from "./routes/users";
 
 export async function buildApp() {
   const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
@@ -39,6 +40,7 @@ export async function buildApp() {
         { name: "auth", description: "Authentication endpoints" },
         { name: "menu", description: "Menu categories and items" },
         { name: "tables", description: "Table management endpoints" },
+        { name: "users", description: "Admin waiter user management endpoints" },
       ],
       components: {
         securitySchemes: {
@@ -67,6 +69,7 @@ export async function buildApp() {
   registerOpsRoutes(app);
   registerAdminEventRoutes(app);
   registerAuthRoutes(app);
+  registerUserRoutes(app);
   registerMenuRoutes(app);
   registerTableRoutes(app);
 

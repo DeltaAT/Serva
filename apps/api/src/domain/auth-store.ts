@@ -1,18 +1,12 @@
 ﻿import { ApiError } from "./api-error";
 import { EventStore } from "./event-store";
-
-type UserRecord = {
-  id: number;
-  username: string;
-  isLocked: boolean;
-  eventId: number;
-};
+import type { UserStore } from "./user-store";
 
 export class AuthStore {
-  private usersByKey = new Map<string, UserRecord>();
-  private nextUserId = 1;
-
-  constructor(private readonly eventStore: EventStore) {}
+  constructor(
+    private readonly eventStore: EventStore,
+    private readonly userStore: UserStore
+  ) {}
 
   authenticateMaster(input: { username: string; password: string }) {
     const masterUsername = process.env.MASTER_USERNAME;
@@ -33,17 +27,7 @@ export class AuthStore {
 
   loginWaiter(input: { username: string; eventPasscode: string }) {
     const eventId = this.eventStore.verifyActiveEventPasscode(input.eventPasscode);
-    const key = `${eventId}:${input.username}`;
-    let user = this.usersByKey.get(key);
-    if (!user) {
-      user = {
-        id: this.nextUserId++,
-        username: input.username,
-        isLocked: false,
-        eventId,
-      };
-      this.usersByKey.set(key, user);
-    }
+    const user = this.userStore.getOrCreateUserForEvent(eventId, input.username);
 
     if (user.isLocked) {
       throw new ApiError(423, "USER_LOCKED", "User account is locked");
@@ -75,10 +59,17 @@ export class AuthStore {
       throw new ApiError(401, "UNAUTHORIZED", "Invalid waiter token");
     }
 
-    const key = `${claims.eventId}:${claims.username}`;
-    const user = this.usersByKey.get(key);
+    if (!this.eventStore.getEvent(claims.eventId)) {
+      throw new ApiError(401, "UNAUTHORIZED", "Invalid waiter token");
+    }
+
+    const user = this.userStore.getUserForEventByUsername(claims.eventId, claims.username);
     if (!user) {
       throw new ApiError(401, "UNAUTHORIZED", "Waiter session not found");
+    }
+
+    if (user.isLocked) {
+      throw new ApiError(423, "USER_LOCKED", "User account is locked");
     }
 
     return {
