@@ -3,6 +3,30 @@ import test from "node:test";
 import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 
+const createdEventIds = new Set<number>();
+
+function createTestEvent(input: {
+  eventName: string;
+  eventPasscode: string;
+  adminUsername: string;
+  adminPassword: string;
+}) {
+  const event = eventStore.createEvent(input);
+  createdEventIds.add(event.id);
+  return event;
+}
+
+test.after(() => {
+  for (const eventId of createdEventIds) {
+    try {
+      eventStore.deleteEvent(eventId);
+    } catch {
+      // Ignore already-deleted events during cleanup.
+    }
+  }
+  createdEventIds.clear();
+});
+
 function createEventPrefix(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
@@ -49,7 +73,7 @@ test("users endpoints reject unauthorized requests", { concurrency: false }, asy
 
 test("users endpoints require active event", { concurrency: false }, async () => {
   const eventPasscode = "users-no-active-pass";
-  const created = eventStore.createEvent({
+  const created = createTestEvent({
     eventName: createEventPrefix("users-no-active"),
     eventPasscode,
     adminUsername: "chef",
@@ -79,7 +103,7 @@ test("users endpoints require active event", { concurrency: false }, async () =>
 
 test("waiter cannot manage users", { concurrency: false }, async () => {
   const eventPasscode = "users-forbidden-pass";
-  const created = eventStore.createEvent({
+  const created = createTestEvent({
     eventName: createEventPrefix("users-forbidden"),
     eventPasscode,
     adminUsername: "chef",
@@ -105,7 +129,7 @@ test("waiter cannot manage users", { concurrency: false }, async () => {
 test("admin can perform users CRUD and filters", { concurrency: false }, async () => {
   const eventPasscode = "users-crud-pass";
   const adminPassword = "secret123";
-  const created = eventStore.createEvent({
+  const created = createTestEvent({
     eventName: createEventPrefix("users-crud"),
     eventPasscode,
     adminUsername: "chef",

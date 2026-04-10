@@ -157,5 +157,30 @@ export function registerAdminEventRoutes(app: FastifyInstance) {
       return toEventDto(activeEvent);
     }
   );
+
+  app.delete<{ Params: EventIdParams }>(
+    "/admin/events/:eventId",
+    {
+      config: {
+        requiresRole: "master",
+      },
+      schema: {
+        tags: ["admin-events"],
+        summary: "Delete an event",
+        security: [{ bearerAuth: [] }],
+        params: EventIdParamsSchema,
+        response: {
+          204: z.null(),
+          401: ApiErrorEnvelopeSchema,
+          403: ApiErrorEnvelopeSchema,
+          404: ApiErrorEnvelopeSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      eventStore.deleteEvent(request.params.eventId);
+      return reply.status(204).send();
+    }
+  );
 }
 

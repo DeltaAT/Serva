@@ -4,6 +4,30 @@ import Database from "better-sqlite3";
 import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 
+const createdEventIds = new Set<number>();
+
+function createTestEvent(input: {
+  eventName: string;
+  eventPasscode: string;
+  adminUsername: string;
+  adminPassword: string;
+}) {
+  const event = eventStore.createEvent(input);
+  createdEventIds.add(event.id);
+  return event;
+}
+
+test.after(() => {
+  for (const eventId of createdEventIds) {
+    try {
+      eventStore.deleteEvent(eventId);
+    } catch {
+      // Ignore already-deleted events during cleanup.
+    }
+  }
+  createdEventIds.clear();
+});
+
 function createEventPrefix(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
@@ -73,7 +97,7 @@ test("tables endpoint rejects unauthorized requests", { concurrency: false }, as
 
 test("waiter session can access GET /tables", { concurrency: false }, async () => {
   const eventPasscode = "tables-pass";
-  const created = eventStore.createEvent({
+  const created = createTestEvent({
     eventName: createEventPrefix("tables-waiter"),
     eventPasscode,
     adminUsername: "chef",
@@ -99,7 +123,7 @@ test("waiter session can access GET /tables", { concurrency: false }, async () =
 
 test("tables endpoint requires active event", { concurrency: false }, async () => {
   const eventPasscode = "tables-no-active";
-  const created = eventStore.createEvent({
+  const created = createTestEvent({
     eventName: createEventPrefix("tables-no-active"),
     eventPasscode,
     adminUsername: "chef",
@@ -125,7 +149,7 @@ test("tables endpoint requires active event", { concurrency: false }, async () =
 
 test("GET /tables returns only active event and sorts by weight", { concurrency: false }, async () => {
   const eventPasscode = "tables-sorting";
-  const activeEvent = eventStore.createEvent({
+  const activeEvent = createTestEvent({
     eventName: createEventPrefix("tables-active"),
     eventPasscode,
     adminUsername: "chef",
@@ -137,7 +161,7 @@ test("GET /tables returns only active event and sorts by weight", { concurrency:
     { name: "A1", weight: 1 },
   ]);
 
-  const inactiveEvent = eventStore.createEvent({
+  const inactiveEvent = createTestEvent({
     eventName: createEventPrefix("tables-inactive"),
     eventPasscode: "inactive-pass",
     adminUsername: "chef",
@@ -162,7 +186,7 @@ test("GET /tables returns only active event and sorts by weight", { concurrency:
 
 test("admin CRUD and bulk table endpoints work", { concurrency: false }, async () => {
   const adminPassword = "secret123";
-  const created = eventStore.createEvent({
+  const created = createTestEvent({
     eventName: createEventPrefix("tables-crud"),
     eventPasscode: "tables-crud-pass",
     adminUsername: "chef",
