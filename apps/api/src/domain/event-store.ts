@@ -1,4 +1,4 @@
-﻿import { mkdirSync } from "node:fs";
+﻿import { mkdirSync, rmSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import Database from "better-sqlite3";
 import { ApiError } from "./api-error";
@@ -198,6 +198,21 @@ export class EventStore {
       .prepare("UPDATE Events SET isActive = 0, closedAt = ? WHERE id = ?")
       .run(closedAt, eventId);
     return this.getEvent(eventId) as EventRecord;
+  }
+
+  deleteEvent(eventId: number) {
+    const target = this.getEvent(eventId);
+    if (!target) {
+      throw new ApiError(404, "EVENT_NOT_FOUND", "Event not found");
+    }
+
+    this.controlDb.prepare("DELETE FROM Events WHERE id = ?").run(eventId);
+
+    try {
+      rmSync(target.dbFilePath, { force: true });
+    } catch (error) {
+      throw new ApiError(500, "EVENT_DELETE_FAILED", "Failed to delete event database file", error);
+    }
   }
 
   verifyActiveEventPasscode(eventPasscode: string) {

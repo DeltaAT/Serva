@@ -4,6 +4,30 @@ import Database from "better-sqlite3";
 import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 
+const createdEventIds = new Set<number>();
+
+function createTestEvent(input: {
+  eventName: string;
+  eventPasscode: string;
+  adminUsername: string;
+  adminPassword: string;
+}) {
+  const event = eventStore.createEvent(input);
+  createdEventIds.add(event.id);
+  return event;
+}
+
+test.after(() => {
+  for (const eventId of createdEventIds) {
+    try {
+      eventStore.deleteEvent(eventId);
+    } catch {
+      // Ignore already-deleted events during cleanup.
+    }
+  }
+  createdEventIds.clear();
+});
+
 function seedMenu(
   dbFilePath: string,
   input: {
@@ -125,7 +149,7 @@ test("menu endpoints reject unauthorized requests", { concurrency: false }, asyn
 
 test("menu endpoints require an active event", { concurrency: false }, async () => {
   const eventPasscode = "pass-no-active";
-  const created = eventStore.createEvent({
+  const created = createTestEvent({
     eventName: createEventPrefix("menu-no-active"),
     eventPasscode,
     adminUsername: "chef",
@@ -151,7 +175,7 @@ test("menu endpoints require an active event", { concurrency: false }, async () 
 
 test("menu list returns only active event and sorts by weight", { concurrency: false }, async () => {
   const eventPasscode = "pass-sorting";
-  const activeEvent = eventStore.createEvent({
+  const activeEvent = createTestEvent({
     eventName: createEventPrefix("menu-active"),
     eventPasscode,
     adminUsername: "chef",
@@ -170,7 +194,7 @@ test("menu list returns only active event and sorts by weight", { concurrency: f
     ],
   });
 
-  const inactiveEvent = eventStore.createEvent({
+  const inactiveEvent = createTestEvent({
     eventName: createEventPrefix("menu-inactive"),
     eventPasscode: "pass-inactive",
     adminUsername: "chef",
@@ -215,7 +239,7 @@ test("menu list returns only active event and sorts by weight", { concurrency: f
 
 test("admin CRUD for menu categories and items works", { concurrency: false }, async () => {
   const adminPassword = "secret123";
-  const created = eventStore.createEvent({
+  const created = createTestEvent({
     eventName: createEventPrefix("menu-crud"),
     eventPasscode: "pass-crud",
     adminUsername: "chef",

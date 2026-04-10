@@ -393,6 +393,13 @@ Deaktiviert ein Event (danach kann es auch kein aktives Event geben).
 
 **Auth:** `admin`
 
+### DELETE `/admin/events/{eventId}`
+Loescht ein Event inklusive zugehoeriger Event-DB Datei.
+
+**Auth:** `admin`
+
+**Statuscodes:** `204`, `404`
+
 ### GET `/admin/event-passcode`
 Gibt den aktuellen gemeinsamen Login-Code zurück (damit der Desktop ihn anzeigen kann).
 
