@@ -3,30 +3,9 @@ import test from "node:test";
 import Database from "better-sqlite3";
 import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
+import { setupEventTestUtils } from "../test-utils/event-test-utils";
 
-const createdEventIds = new Set<number>();
-
-function createTestEvent(input: {
-  eventName: string;
-  eventPasscode: string;
-  adminUsername: string;
-  adminPassword: string;
-}) {
-  const event = eventStore.createEvent(input);
-  createdEventIds.add(event.id);
-  return event;
-}
-
-test.after(() => {
-  for (const eventId of createdEventIds) {
-    try {
-      eventStore.deleteEvent(eventId);
-    } catch {
-      // Ignore already-deleted events during cleanup.
-    }
-  }
-  createdEventIds.clear();
-});
+const { createTestEvent, createEventPrefix } = setupEventTestUtils(test, eventStore);
 
 function seedMenu(
   dbFilePath: string,
@@ -104,9 +83,6 @@ function seedMenu(
   return categoryIds;
 }
 
-function createEventPrefix(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-}
 
 async function loginWaiter(
   app: Awaited<ReturnType<typeof buildApp>>,

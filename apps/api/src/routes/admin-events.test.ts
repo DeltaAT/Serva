@@ -2,34 +2,9 @@
 import test from "node:test";
 import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
+import { setupEventTestUtils } from "../test-utils/event-test-utils";
 
-const createdEventIds = new Set<number>();
-
-function createEventPrefix(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-}
-
-function createTestEvent(input: {
-  eventName: string;
-  eventPasscode: string;
-  adminUsername: string;
-  adminPassword: string;
-}) {
-  const event = eventStore.createEvent(input);
-  createdEventIds.add(event.id);
-  return event;
-}
-
-test.after(() => {
-  for (const eventId of createdEventIds) {
-    try {
-      eventStore.deleteEvent(eventId);
-    } catch {
-      // Ignore already-deleted events during cleanup.
-    }
-  }
-  createdEventIds.clear();
-});
+const { createEventPrefix, createTestEvent, forgetEvent } = setupEventTestUtils(test, eventStore);
 
 async function loginMaster(app: Awaited<ReturnType<typeof buildApp>>) {
   const login = await app.inject({
@@ -88,7 +63,7 @@ test("master can delete inactive event", { concurrency: false }, async () => {
   });
 
   assert.equal(response.statusCode, 204);
-  createdEventIds.delete(created.id);
+  forgetEvent(created.id);
   assert.equal(eventStore.getEvent(created.id), null);
   await app.close();
 });
@@ -115,7 +90,7 @@ test("master can delete active event and active event becomes empty", { concurre
   });
 
   assert.equal(response.statusCode, 204);
-  createdEventIds.delete(created.id);
+  forgetEvent(created.id);
   assert.equal(eventStore.getEvent(created.id), null);
   assert.equal(eventStore.getActiveEvent(), null);
   await app.close();
