@@ -251,6 +251,58 @@ const optionalBooleanQuerySchema = z
     return z.NEVER;
   });
 
+export const UsersQuerySchema = z
+  .object({
+    locked: optionalBooleanQuerySchema
+      .optional()
+      .describe("Filter by lock state. Example: ?locked=true"),
+    search: z.string().trim().min(1).max(120).optional().describe("Case-insensitive username search"),
+  })
+  .strict();
+export type UsersQuery = z.infer<typeof UsersQuerySchema>;
+
+export const UserParamsSchema = z
+  .object({
+    userId: z.coerce.number().int().positive(),
+  })
+  .strict();
+export type UserParams = z.infer<typeof UserParamsSchema>;
+
+export const UserCreateRequestSchema = z
+  .object({
+    username: nonEmptyString,
+    isLocked: z.boolean().optional(),
+  })
+  .strict();
+export type UserCreateRequest = z.infer<typeof UserCreateRequestSchema>;
+
+export const UserUpdateRequestSchema = z
+  .object({
+    username: nonEmptyString.optional(),
+    isLocked: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  });
+export type UserUpdateRequest = z.infer<typeof UserUpdateRequestSchema>;
+
+export const UsersResponseSchema = z
+  .object({
+    users: z.array(UserDtoSchema),
+  })
+  .strict();
+export type UsersResponse = z.infer<typeof UsersResponseSchema>;
+
+export const UserCreateResponseSchema = UserDtoSchema;
+export type UserCreateResponse = UserDto;
+
+export const UserGetResponseSchema = UserDtoSchema;
+export type UserGetResponse = UserDto;
+
+export const UserUpdateResponseSchema = UserDtoSchema;
+export type UserUpdateResponse = UserDto;
+
 export const MenuCategoryDtoSchema = z
   .object({
     id: positiveInt,
