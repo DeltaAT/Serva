@@ -16,6 +16,9 @@
   TableUpdateResponseSchema,
 } from "@serva/shared-types";
 import type { FastifyInstance } from "fastify";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import QRCode from "qrcode";
+import { z } from "zod";
 import { tableStore } from "../domain/state";
 
 function escapeXml(value: string) {
@@ -40,39 +43,117 @@ function buildTableQrSvg(input: { id: number; name: string }) {
 </svg>`;
 }
 
-function escapePdfText(value: string) {
-  return value.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
+async function renderTableHalf(input: {
+  pdfDoc: PDFDocument;
+  page: ReturnType<PDFDocument["addPage"]>;
+  nameFont: Awaited<ReturnType<PDFDocument["embedFont"]>>;
+  table: { id: number; name: string };
+  slotBottomY: number;
+  slotHeight: number;
+}) {
+  const { pdfDoc, page, nameFont, table, slotBottomY, slotHeight } = input;
+  const pageWidth = page.getWidth();
+  const title = `${table.name}`;
+  const titleSize = 72;
+  const titleTopPadding = 24;
+  const titleBottomGap = 22;
+  const slotBottomPadding = 24;
+  const qrFramePadding = 8;
+  const titleWidth = nameFont.widthOfTextAtSize(title, titleSize);
+  const titleY = slotBottomY + slotHeight - titleTopPadding - titleSize;
+  page.drawText(title, {
+    x: Math.max(24, (pageWidth - titleWidth) / 2),
+    y: titleY,
+    size: titleSize,
+    font: nameFont,
+    color: rgb(0.1, 0.1, 0.1),
+  });
+
+  const qrPayload = JSON.stringify({ tableId: table.id, tableName: table.name });
+  const qrDataUrl = await QRCode.toDataURL(qrPayload, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 1000,
+  });
+  const qrBase64 = qrDataUrl.slice(qrDataUrl.indexOf(",") + 1);
+  const qrImage = await pdfDoc.embedPng(Buffer.from(qrBase64, "base64"));
+
+  const qrAreaTopY = titleY - titleBottomGap;
+  const qrAreaBottomY = slotBottomY + slotBottomPadding;
+  const availableQrHeight = Math.max(80, qrAreaTopY - qrAreaBottomY);
+  const maxQrSize = Math.min(availableQrHeight, pageWidth - 120, 340);
+  const qrSize = Math.max(120, maxQrSize);
+  const qrX = (pageWidth - qrSize) / 2;
+  const qrY = qrAreaBottomY + Math.max(0, (availableQrHeight - qrSize) / 2);
+
+  page.drawRectangle({
+    x: qrX - qrFramePadding,
+    y: qrY - qrFramePadding,
+    width: qrSize + qrFramePadding * 2,
+    height: qrSize + qrFramePadding * 2,
+    borderWidth: 1,
+    borderColor: rgb(0.82, 0.82, 0.82),
+  });
+  page.drawImage(qrImage, {
+    x: qrX,
+    y: qrY,
+    width: qrSize,
+    height: qrSize,
+  });
 }
 
-function buildSimplePdf(lines: string[]) {
-  const content = lines
-    .map((line, index) => `BT /F1 12 Tf 50 ${780 - index * 18} Td (${escapePdfText(line)}) Tj ET`)
-    .join("\n");
+async function buildTablesQrPdf(tables: Array<{ id: number; name: string }>) {
+  const pdfDoc = await PDFDocument.create();
+  const nameFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const pageSize: [number, number] = [595.28, 841.89];
 
-  const objects = [
-    "1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
-    "2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
-    "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >> endobj\n",
-    "4 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> endobj\n",
-    `5 0 obj << /Length ${Buffer.byteLength(content, "utf8")} >> stream\n${content}\nendstream\nendobj\n`,
-  ];
-
-  let body = "%PDF-1.4\n";
-  const offsets = [0];
-  for (const object of objects) {
-    offsets.push(Buffer.byteLength(body, "utf8"));
-    body += object;
+  if (tables.length === 0) {
+    const page = pdfDoc.addPage(pageSize);
+    page.drawText("No tables available", {
+      x: 200,
+      y: 420,
+      size: 24,
+      font: nameFont,
+      color: rgb(0.2, 0.2, 0.2),
+    });
+    return Buffer.from(await pdfDoc.save());
   }
 
-  const xrefOffset = Buffer.byteLength(body, "utf8");
-  body += `xref\n0 ${objects.length + 1}\n`;
-  body += "0000000000 65535 f \n";
-  for (let index = 1; index < offsets.length; index += 1) {
-    body += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+  for (let index = 0; index < tables.length; index += 2) {
+    const page = pdfDoc.addPage(pageSize);
+    const pageWidth = page.getWidth();
+    const pageHeight = page.getHeight();
+    const slotHeight = pageHeight / 2;
+
+    page.drawLine({
+      start: { x: 24, y: slotHeight },
+      end: { x: pageWidth - 24, y: slotHeight },
+      thickness: 1,
+      color: rgb(0.75, 0.75, 0.75),
+    });
+
+    await renderTableHalf({
+      pdfDoc,
+      page,
+      nameFont,
+      table: tables[index],
+      slotBottomY: slotHeight,
+      slotHeight,
+    });
+
+    if (tables[index + 1]) {
+      await renderTableHalf({
+        pdfDoc,
+        page,
+        nameFont,
+        table: tables[index + 1],
+        slotBottomY: 0,
+        slotHeight,
+      });
+    }
   }
 
-  body += `trailer << /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
-  return Buffer.from(body, "utf8");
+  return Buffer.from(await pdfDoc.save());
 }
 
 export function registerTableRoutes(app: FastifyInstance) {
@@ -227,6 +308,7 @@ export function registerTableRoutes(app: FastifyInstance) {
         summary: "Export table QR overview as PDF",
         security: [{ bearerAuth: [] }],
         response: {
+          200: z.unknown().describe("PDF document containing table QR codes"),
           401: ApiErrorEnvelopeSchema,
           403: ApiErrorEnvelopeSchema,
           409: ApiErrorEnvelopeSchema,
@@ -235,10 +317,9 @@ export function registerTableRoutes(app: FastifyInstance) {
     },
     async (_request, reply) => {
       const tables = tableStore.listTables({});
-      const lines = ["Serva Tables QR Export", ...tables.map((table) => `${table.name} (id=${table.id})`)];
-      const pdf = buildSimplePdf(lines);
+      const pdf = await buildTablesQrPdf(tables.map((table) => ({ id: table.id, name: table.name })));
       return reply
-        .header("Content-Disposition", "inline; filename=tables-qr.pdf")
+        .header("Content-Disposition", "attachment; filename=tables-qr.pdf")
         .type("application/pdf")
         .send(pdf);
     }
