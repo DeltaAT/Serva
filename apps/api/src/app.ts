@@ -15,6 +15,7 @@ import { registerAdminEventRoutes } from "./routes/admin-events";
 import { registerAuthRoutes } from "./routes/auth";
 import { registerConfigRoutes } from "./routes/config";
 import { registerMenuRoutes } from "./routes/menu";
+import { registerOrderRoutes } from "./routes/orders";
 import { registerOpsRoutes } from "./routes/operations";
 import { registerPrinterRoutes } from "./routes/printers";
 import { registerStockRoutes } from "./routes/stock";
@@ -43,6 +44,7 @@ export async function buildApp() {
         { name: "auth", description: "Authentication endpoints" },
         { name: "config", description: "Event configuration endpoints" },
         { name: "menu", description: "Menu categories and items" },
+        { name: "orders", description: "Order submission and order history" },
         { name: "printers", description: "Printer management and test-print endpoints" },
         { name: "stock", description: "Stock item management" },
         { name: "tables", description: "Table management endpoints" },
@@ -79,6 +81,7 @@ export async function buildApp() {
   registerPrinterRoutes(app);
   registerUserRoutes(app);
   registerMenuRoutes(app);
+  registerOrderRoutes(app);
   registerStockRoutes(app);
   registerTableRoutes(app);
 
