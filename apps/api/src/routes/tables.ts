@@ -166,8 +166,10 @@ export function registerTableRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["tables"],
-        summary: "Get tables for the active event",
-        description: "Examples: /tables?locked=false and /tables?sort=weight,name",
+        operationId: "tablesList",
+        summary: "Tische auflisten",
+        description:
+          "Liefert Tische des aktiven Events. Query-Beispiele: /tables?locked=false und /tables?sort=weight,name",
         security: [{ bearerAuth: [] }],
         querystring: TablesQuerySchema,
         response: {
@@ -196,7 +198,9 @@ export function registerTableRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["tables"],
-        summary: "Create a table",
+        operationId: "tablesCreate",
+        summary: "Tisch erstellen",
+        description: "Erstellt einen einzelnen Tisch. Beispiel-Body: { name: 'A1', weight: 1 }",
         security: [{ bearerAuth: [] }],
         body: TableCreateRequestSchema,
         response: {
@@ -223,7 +227,10 @@ export function registerTableRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["tables"],
-        summary: "Create a table range in bulk",
+        operationId: "tablesBulkCreate",
+        summary: "Tischbereich im Bulk erstellen",
+        description:
+          "Erstellt mehrere Tische aus Zeilen- und Zahlenbereich. Beispiel-Body: { rows: ['A','B'], from: 1, to: 5 }",
         security: [{ bearerAuth: [] }],
         body: TableBulkCreateRequestSchema,
         response: {
@@ -250,7 +257,9 @@ export function registerTableRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["tables"],
-        summary: "Update a table",
+        operationId: "tablesUpdate",
+        summary: "Tisch aktualisieren",
+        description: "Aktualisiert einzelne Tischfelder wie Name, Gewicht oder Lock-Status.",
         security: [{ bearerAuth: [] }],
         params: TableParamsSchema,
         body: TableUpdateRequestSchema,
@@ -278,7 +287,9 @@ export function registerTableRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["tables"],
-        summary: "Get a table QR as SVG",
+        operationId: "tablesQrGetSvg",
+        summary: "Tisch-QR als SVG abrufen",
+        description: "Liefert den QR-Code eines Tisches als SVG-Bild.",
         security: [{ bearerAuth: [] }],
         params: TableParamsSchema,
         response: {
@@ -305,7 +316,10 @@ export function registerTableRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["tables"],
-        summary: "Export table QR overview as PDF",
+        operationId: "tablesQrExportPdf",
+        summary: "QR-PDF fuer alle Tische exportieren",
+        description:
+          "Erzeugt eine PDF fuer alle Tische des aktiven Events (pro Seite zwei QR-Codes mit Trennlinie und Tischname).",
         security: [{ bearerAuth: [] }],
         response: {
           200: z.unknown().describe("PDF document containing table QR codes"),
