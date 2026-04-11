@@ -22,7 +22,11 @@ export function registerAuthRoutes(app: FastifyInstance) {
     {
       schema: {
         tags: ["auth"],
-        summary: "Master login for global event management",
+        operationId: "authMasterLogin",
+        summary: "Master-Login",
+        description:
+          "Globaler Login fuer Master-Operationen (z. B. Event anlegen/aktivieren/deaktivieren/loeschen). Beispiel-Body: { username: 'master', password: 'secret' }",
+        security: [],
         body: MasterSessionStartRequestSchema,
         response: {
           200: MasterSessionStartResponseSchema,
@@ -51,7 +55,11 @@ export function registerAuthRoutes(app: FastifyInstance) {
     {
       schema: {
         tags: ["auth"],
-        summary: "Event admin login with username/password",
+        operationId: "authAdminLogin",
+        summary: "Admin-Login pro Event",
+        description:
+          "Login fuer Event-Admins mit eventId, username und password. Beispiel-Body: { eventId: 12, username: 'chef', password: 'secret123' }",
+        security: [],
         body: AdminSessionStartRequestSchema,
         response: {
           200: AdminSessionStartResponseSchema,
@@ -91,7 +99,11 @@ export function registerAuthRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["auth"],
-        summary: "Login with username and event passcode",
+        operationId: "authWaiterLogin",
+        summary: "Waiter-Login mit Event-Passcode",
+        description:
+          "Waiter-Session-Start ohne individuelles Passwort. Beispiel-Body: { username: 'anna', eventPasscode: 'event-code' }",
+        security: [],
         body: AuthLoginRequestSchema,
         response: {
           200: AuthLoginResponseSchema,
@@ -134,7 +146,10 @@ export function registerAuthRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["auth"],
-        summary: "Get current user from access token",
+        operationId: "authMe",
+        summary: "Aktuelle Session abrufen",
+        description:
+          "Liest die Principal-Daten direkt aus dem uebergebenen Bearer-Token (Rolle, eventId, optional user).",
         security: [{ bearerAuth: [] }],
         response: {
           200: AuthMeResponseSchema,

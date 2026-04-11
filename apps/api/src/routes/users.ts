@@ -27,7 +27,10 @@ export function registerUserRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["users"],
-        summary: "List waiter users for the active event",
+        operationId: "usersList",
+        summary: "Waiter-User auflisten",
+        description:
+          "Listet User des aktiven Events. Query-Beispiele: ?locked=true, ?search=ann",
         security: [{ bearerAuth: [] }],
         querystring: UsersQuerySchema,
         response: {
@@ -57,7 +60,10 @@ export function registerUserRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["users"],
-        summary: "Create a waiter user",
+        operationId: "usersCreate",
+        summary: "Waiter-User erstellen",
+        description:
+          "Erstellt einen neuen Waiter-User im aktiven Event. Beispiel-Body: { username: 'anna', isLocked: false }",
         security: [{ bearerAuth: [] }],
         body: UserCreateRequestSchema,
         response: {
@@ -84,7 +90,9 @@ export function registerUserRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["users"],
-        summary: "Get a waiter user",
+        operationId: "usersGetById",
+        summary: "Waiter-User per ID abrufen",
+        description: "Liefert einen einzelnen User aus dem aktiven Event.",
         security: [{ bearerAuth: [] }],
         params: UserParamsSchema,
         response: {
@@ -108,7 +116,10 @@ export function registerUserRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["users"],
-        summary: "Update a waiter user",
+        operationId: "usersUpdate",
+        summary: "Waiter-User aktualisieren",
+        description:
+          "Aktualisiert einzelne Felder eines Users, z. B. Sperrstatus oder Username.",
         security: [{ bearerAuth: [] }],
         params: UserParamsSchema,
         body: UserUpdateRequestSchema,
@@ -134,7 +145,9 @@ export function registerUserRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["users"],
-        summary: "Delete a waiter user",
+        operationId: "usersDelete",
+        summary: "Waiter-User loeschen",
+        description: "Loescht einen User aus dem aktiven Event.",
         security: [{ bearerAuth: [] }],
         params: UserParamsSchema,
         response: {

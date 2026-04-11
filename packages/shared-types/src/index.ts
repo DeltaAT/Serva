@@ -454,6 +454,84 @@ export type MenuItemCreateResponse = MenuItemDto;
 export const MenuItemUpdateResponseSchema = MenuItemDtoSchema;
 export type MenuItemUpdateResponse = MenuItemDto;
 
+export const StockItemDtoSchema = z
+  .object({
+    id: positiveInt,
+    name: nonEmptyString,
+    quantity: z.number().int().nonnegative(),
+  })
+  .strict();
+export type StockItemDto = z.infer<typeof StockItemDtoSchema>;
+
+export const StockItemParamsSchema = z
+  .object({
+    stockItemId: z.coerce.number().int().positive(),
+  })
+  .strict();
+export type StockItemParams = z.infer<typeof StockItemParamsSchema>;
+
+export const StockItemsResponseSchema = z
+  .object({
+    items: z.array(StockItemDtoSchema),
+  })
+  .strict();
+export type StockItemsResponse = z.infer<typeof StockItemsResponseSchema>;
+
+export const StockItemCreateRequestSchema = z
+  .object({
+    name: nonEmptyString,
+    quantity: z.number().int().nonnegative(),
+  })
+  .strict();
+export type StockItemCreateRequest = z.infer<typeof StockItemCreateRequestSchema>;
+
+export const StockItemUpdateRequestSchema = z
+  .object({
+    quantity: z.number().int().nonnegative().optional(),
+    delta: z.number().int().optional(),
+  })
+  .strict()
+  .refine((value) => value.quantity !== undefined || value.delta !== undefined, {
+    message: "Provide quantity or delta",
+  })
+  .refine((value) => !(value.quantity !== undefined && value.delta !== undefined), {
+    message: "Provide either quantity or delta, not both",
+  });
+export type StockItemUpdateRequest = z.infer<typeof StockItemUpdateRequestSchema>;
+
+export const StockItemCreateResponseSchema = StockItemDtoSchema;
+export type StockItemCreateResponse = StockItemDto;
+
+export const StockItemUpdateResponseSchema = StockItemDtoSchema;
+export type StockItemUpdateResponse = StockItemDto;
+
+export const MenuItemStockRequirementDtoSchema = z
+  .object({
+    stockItemId: positiveInt,
+    quantityRequired: z.number().int().positive(),
+  })
+  .strict();
+export type MenuItemStockRequirementDto = z.infer<typeof MenuItemStockRequirementDtoSchema>;
+
+export const MenuItemStockRequirementsReplaceRequestSchema = z
+  .object({
+    requirements: z.array(MenuItemStockRequirementDtoSchema),
+  })
+  .strict();
+export type MenuItemStockRequirementsReplaceRequest = z.infer<
+  typeof MenuItemStockRequirementsReplaceRequestSchema
+>;
+
+export const MenuItemStockRequirementsReplaceResponseSchema = z
+  .object({
+    menuItemId: positiveInt,
+    requirements: z.array(MenuItemStockRequirementDtoSchema),
+  })
+  .strict();
+export type MenuItemStockRequirementsReplaceResponse = z.infer<
+  typeof MenuItemStockRequirementsReplaceResponseSchema
+>;
+
 export const OrderSubmitItemRequestSchema = z
   .object({
     menuItemId: positiveInt,

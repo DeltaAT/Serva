@@ -37,9 +37,10 @@ export function registerMenuRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["menu"],
-        summary: "Get menu categories for the active event",
+        operationId: "menuCategoriesList",
+        summary: "Menue-Kategorien auflisten",
         description:
-          "Examples: /menu/categories?locked=false and /menu/categories?includeRouting=true",
+          "Liefert Kategorien des aktiven Events. Query-Beispiele: /menu/categories?locked=false und /menu/categories?includeRouting=true",
         security: [{ bearerAuth: [] }],
         querystring: MenuCategoriesQuerySchema,
         response: {
@@ -69,9 +70,10 @@ export function registerMenuRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["menu"],
-        summary: "Get menu items for the active event",
+        operationId: "menuItemsList",
+        summary: "Menue-Items auflisten",
         description:
-          "Examples: /menu/items?categoryId=2&sort=weight,name and /menu/items?locked=false",
+          "Liefert Menue-Items des aktiven Events. Query-Beispiele: /menu/items?categoryId=2&sort=weight,name und /menu/items?locked=false",
         security: [{ bearerAuth: [] }],
         querystring: MenuItemsQuerySchema,
         response: {
@@ -101,7 +103,10 @@ export function registerMenuRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["menu"],
-        summary: "Create a menu category",
+        operationId: "menuCategoriesCreate",
+        summary: "Menue-Kategorie erstellen",
+        description:
+          "Erstellt eine Kategorie. Beispiel-Body: { name: 'Desserts', weight: 10, isLocked: false }",
         security: [{ bearerAuth: [] }],
         body: MenuCategoryCreateRequestSchema,
         response: {
@@ -128,7 +133,9 @@ export function registerMenuRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["menu"],
-        summary: "Update a menu category",
+        operationId: "menuCategoriesUpdate",
+        summary: "Menue-Kategorie aktualisieren",
+        description: "Aktualisiert Name, Beschreibung, Lock-Status, Gewicht und Routing-Felder.",
         security: [{ bearerAuth: [] }],
         params: MenuCategoryParamsSchema,
         body: MenuCategoryUpdateRequestSchema,
@@ -156,7 +163,9 @@ export function registerMenuRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["menu"],
-        summary: "Delete a menu category",
+        operationId: "menuCategoriesDelete",
+        summary: "Menue-Kategorie loeschen",
+        description: "Loescht eine Kategorie. Wenn noch Items enthalten sind, kommt ein Konfliktfehler.",
         security: [{ bearerAuth: [] }],
         params: MenuCategoryParamsSchema,
         response: {
@@ -183,7 +192,10 @@ export function registerMenuRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["menu"],
-        summary: "Create a menu item",
+        operationId: "menuItemsCreate",
+        summary: "Menue-Item erstellen",
+        description:
+          "Erstellt ein Menue-Item. Beispiel-Body: { name: 'Cake', price: 5.9, menuCategoryId: 3 }",
         security: [{ bearerAuth: [] }],
         body: MenuItemCreateRequestSchema,
         response: {
@@ -211,7 +223,9 @@ export function registerMenuRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["menu"],
-        summary: "Update a menu item",
+        operationId: "menuItemsUpdate",
+        summary: "Menue-Item aktualisieren",
+        description: "Aktualisiert Felder eines Menue-Items inkl. Kategorie-Wechsel und Lock-Status.",
         security: [{ bearerAuth: [] }],
         params: MenuItemParamsSchema,
         body: MenuItemUpdateRequestSchema,
@@ -239,7 +253,9 @@ export function registerMenuRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["menu"],
-        summary: "Delete a menu item",
+        operationId: "menuItemsDelete",
+        summary: "Menue-Item loeschen",
+        description: "Loescht ein Menue-Item aus dem aktiven Event.",
         security: [{ bearerAuth: [] }],
         params: MenuItemParamsSchema,
         response: {

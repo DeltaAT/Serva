@@ -12,7 +12,9 @@ import { z } from "zod";
 import { eventStore } from "../domain/state";
 import { ApiError } from "../domain/api-error";
 
-const EventIdParamsSchema = z.object({ eventId: z.coerce.number().int().positive() });
+const EventIdParamsSchema = z.object({
+  eventId: z.coerce.number().int().positive().describe("Event-ID. Beispiel: 42"),
+});
 type EventIdParams = z.infer<typeof EventIdParamsSchema>;
 
 function toEventDto(event: {
@@ -42,7 +44,10 @@ export function registerAdminEventRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["admin-events"],
-        summary: "Create a new event",
+        operationId: "adminEventsCreate",
+        summary: "Neues Event erstellen",
+        description:
+          "Legt ein neues Event inklusive eigener Event-Datenbank und initialem Admin-Account an.",
         security: [{ bearerAuth: [] }],
         body: AdminEventCreateRequestSchema,
         response: {
@@ -67,7 +72,10 @@ export function registerAdminEventRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["admin-events"],
-        summary: "Activate an event (deactivates any previously active event)",
+        operationId: "adminEventsActivate",
+        summary: "Event aktivieren",
+        description:
+          "Aktiviert das angegebene Event global. Ein zuvor aktives Event wird automatisch deaktiviert.",
         security: [{ bearerAuth: [] }],
         params: EventIdParamsSchema,
         response: {
@@ -90,7 +98,9 @@ export function registerAdminEventRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["admin-events"],
-        summary: "Deactivate an event",
+        operationId: "adminEventsDeactivate",
+        summary: "Event deaktivieren",
+        description: "Deaktiviert das angegebene Event, ohne es zu loeschen.",
         security: [{ bearerAuth: [] }],
         params: EventIdParamsSchema,
         response: {
@@ -112,7 +122,10 @@ export function registerAdminEventRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["admin-events"],
-        summary: "Close an event",
+        operationId: "adminEventsClose",
+        summary: "Event schliessen",
+        description:
+          "Schliesst das Event fachlich (setzt closedAt) und deaktiviert es falls noetig.",
         security: [{ bearerAuth: [] }],
         params: EventIdParamsSchema,
         response: {
@@ -134,7 +147,10 @@ export function registerAdminEventRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["admin-events"],
-        summary: "Get active event",
+        operationId: "adminEventsGetActive",
+        summary: "Aktives Event abrufen",
+        description:
+          "Liefert das aktuell aktive Event. Gibt NO_ACTIVE_EVENT zurueck, wenn keines aktiv ist.",
         security: [{ bearerAuth: [] }],
         response: {
           200: ActiveEventResponseSchema,
@@ -166,7 +182,10 @@ export function registerAdminEventRoutes(app: FastifyInstance) {
       },
       schema: {
         tags: ["admin-events"],
-        summary: "Delete an event",
+        operationId: "adminEventsDelete",
+        summary: "Event loeschen",
+        description:
+          "Loescht ein Event inklusive zugehoeriger Event-Datenbank. Wenn das Event aktiv war, bleibt danach kein aktives Event.",
         security: [{ bearerAuth: [] }],
         params: EventIdParamsSchema,
         response: {
