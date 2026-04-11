@@ -1,0 +1,406 @@
+﻿import assert from "node:assert/strict";
+import test from "node:test";
+import Database from "better-sqlite3";
+import { buildApp } from "../app";
+import { eventStore } from "../domain/state";
+import { setupEventTestUtils } from "../test-utils/event-test-utils";
+
+const { createTestEvent, createEventPrefix } = setupEventTestUtils(test, eventStore);
+
+async function loginWaiter(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  eventPasscode: string,
+  username: string
+) {
+  const login = await app.inject({
+    method: "POST",
+    url: "/auth/login",
+    payload: { username, eventPasscode },
+  });
+  assert.equal(login.statusCode, 200);
+  const body = login.json() as {
+    accessToken: string;
+    user: { id: number; username: string };
+  };
+  return {
+    accessToken: body.accessToken,
+    user: body.user,
+  };
+}
+
+async function loginAdmin(
+  app: Awaited<ReturnType<typeof buildApp>>,
+  input: { eventId: number; username: string; password: string }
+) {
+  const login = await app.inject({
+    method: "POST",
+    url: "/auth/admin/login",
+    payload: input,
+  });
+  assert.equal(login.statusCode, 200);
+  return (login.json() as { accessToken: string }).accessToken;
+}
+
+function seedOrderBaseData(dbFilePath: string) {
+  const db = new Database(dbFilePath);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS Tables (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      weight INTEGER NOT NULL DEFAULT 0,
+      isLocked INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS MenuCategories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      isLocked INTEGER NOT NULL DEFAULT 0,
+      weight INTEGER NOT NULL DEFAULT 0,
+      printer_id INTEGER,
+      orderDisplay_id INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS MenuItems (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      weight INTEGER NOT NULL DEFAULT 0,
+      price REAL NOT NULL DEFAULT 0,
+      isLocked INTEGER NOT NULL DEFAULT 0,
+      menuCategory_id INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS StockItems (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS StockItemMenuItem (
+      stockItem_id INTEGER NOT NULL,
+      menuItem_id INTEGER NOT NULL,
+      quantityRequired INTEGER NOT NULL,
+      PRIMARY KEY (stockItem_id, menuItem_id)
+    );
+  `);
+
+  const tableId = Number(
+    db.prepare("INSERT INTO Tables (name, weight, isLocked) VALUES (?, ?, ?)").run("A1", 1, 0)
+      .lastInsertRowid
+  );
+
+  const categoryId = Number(
+    db
+      .prepare("INSERT INTO MenuCategories (name, description, isLocked, weight) VALUES (?, ?, ?, ?)")
+      .run("Food", "", 0, 0).lastInsertRowid
+  );
+
+  const menuItemId = Number(
+    db.prepare(
+      "INSERT INTO MenuItems (name, description, weight, price, isLocked, menuCategory_id) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("Burger", "", 0, 7.5, 0, categoryId).lastInsertRowid
+  );
+
+  const stockItemId = Number(
+    db.prepare("INSERT INTO StockItems (name, quantity) VALUES (?, ?)").run("Bun", 10).lastInsertRowid
+  );
+
+  db.prepare(
+    "INSERT INTO StockItemMenuItem (stockItem_id, menuItem_id, quantityRequired) VALUES (?, ?, ?)"
+  ).run(stockItemId, menuItemId, 1);
+
+  db.close();
+  return { tableId, menuItemId, stockItemId };
+}
+
+test("orders endpoints reject unauthorized requests", { concurrency: false }, async () => {
+  const app = await buildApp();
+  const response = await app.inject({
+    method: "GET",
+    url: "/orders",
+  });
+
+  assert.equal(response.statusCode, 401);
+  assert.equal(response.json().error.code, "UNAUTHORIZED");
+  await app.close();
+});
+
+test("orders endpoints require active event", { concurrency: false }, async () => {
+  const created = createTestEvent({
+    eventName: createEventPrefix("orders-no-active"),
+    eventPasscode: "orders-pass",
+    adminUsername: "chef",
+    adminPassword: "secret123",
+  });
+  eventStore.activateEvent(created.id);
+
+  const app = await buildApp();
+  const waiter = await loginWaiter(app, "orders-pass", "noactive-waiter");
+
+  eventStore.deactivateEvent(created.id);
+
+  const response = await app.inject({
+    method: "GET",
+    url: "/orders",
+    headers: { authorization: `Bearer ${waiter.accessToken}` },
+  });
+
+  assert.equal(response.statusCode, 409);
+  assert.equal(response.json().error.code, "NO_ACTIVE_EVENT");
+  await app.close();
+});
+
+test("waiter can create/list own orders but not access other waiter orders", { concurrency: false }, async () => {
+  const eventPasscode = "orders-own-pass";
+  const created = createTestEvent({
+    eventName: createEventPrefix("orders-own"),
+    eventPasscode,
+    adminUsername: "chef",
+    adminPassword: "secret123",
+  });
+  eventStore.activateEvent(created.id);
+  const { tableId, menuItemId, stockItemId } = seedOrderBaseData(created.dbFilePath);
+
+  const app = await buildApp();
+  const waiterA = await loginWaiter(app, eventPasscode, "waiter-a");
+  const waiterB = await loginWaiter(app, eventPasscode, "waiter-b");
+
+  const createdOrder = await app.inject({
+    method: "POST",
+    url: "/orders",
+    headers: { authorization: `Bearer ${waiterA.accessToken}` },
+    payload: {
+      tableId,
+      items: [{ menuItemId, quantity: 2, specialRequests: "No onions" }],
+    },
+  });
+
+  assert.equal(createdOrder.statusCode, 201);
+  const orderBody = createdOrder.json() as { id: number; userId: number; items: Array<{ quantity: number }> };
+  assert.equal(orderBody.userId, waiterA.user.id);
+  assert.equal(orderBody.items[0].quantity, 2);
+
+  const listOwn = await app.inject({
+    method: "GET",
+    url: "/orders",
+    headers: { authorization: `Bearer ${waiterA.accessToken}` },
+  });
+  assert.equal(listOwn.statusCode, 200);
+  assert.equal((listOwn.json() as { orders: Array<{ id: number }> }).orders.length, 1);
+
+  const listOtherUserId = await app.inject({
+    method: "GET",
+    url: `/orders?userId=${waiterB.user.id}`,
+    headers: { authorization: `Bearer ${waiterA.accessToken}` },
+  });
+  assert.equal(listOtherUserId.statusCode, 403);
+
+  const getByOtherWaiter = await app.inject({
+    method: "GET",
+    url: `/orders/${orderBody.id}`,
+    headers: { authorization: `Bearer ${waiterB.accessToken}` },
+  });
+  assert.equal(getByOtherWaiter.statusCode, 403);
+
+  const db = new Database(created.dbFilePath);
+  const stock = db.prepare("SELECT quantity FROM StockItems WHERE id = ?").get(stockItemId) as {
+    quantity: number;
+  };
+  assert.equal(stock.quantity, 8);
+  db.close();
+
+  await app.close();
+});
+
+test("admin can list all orders and filter by user", { concurrency: false }, async () => {
+  const eventPasscode = "orders-admin-pass";
+  const adminPassword = "secret123";
+  const created = createTestEvent({
+    eventName: createEventPrefix("orders-admin"),
+    eventPasscode,
+    adminUsername: "chef",
+    adminPassword,
+  });
+  eventStore.activateEvent(created.id);
+  const { tableId, menuItemId } = seedOrderBaseData(created.dbFilePath);
+
+  const app = await buildApp();
+  const waiterA = await loginWaiter(app, eventPasscode, "waiter-admin-a");
+  const waiterB = await loginWaiter(app, eventPasscode, "waiter-admin-b");
+  const adminToken = await loginAdmin(app, {
+    eventId: created.id,
+    username: "chef",
+    password: adminPassword,
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/orders",
+    headers: { authorization: `Bearer ${waiterA.accessToken}` },
+    payload: {
+      tableId,
+      items: [{ menuItemId, quantity: 1 }],
+    },
+  });
+
+  await app.inject({
+    method: "POST",
+    url: "/orders",
+    headers: { authorization: `Bearer ${waiterB.accessToken}` },
+    payload: {
+      tableId,
+      items: [{ menuItemId, quantity: 1 }],
+    },
+  });
+
+  const listAll = await app.inject({
+    method: "GET",
+    url: "/orders",
+    headers: { authorization: `Bearer ${adminToken}` },
+  });
+  assert.equal(listAll.statusCode, 200);
+  assert.equal((listAll.json() as { orders: unknown[] }).orders.length, 2);
+
+  const filtered = await app.inject({
+    method: "GET",
+    url: `/orders?userId=${waiterA.user.id}`,
+    headers: { authorization: `Bearer ${adminToken}` },
+  });
+  assert.equal(filtered.statusCode, 200);
+  assert.equal((filtered.json() as { orders: unknown[] }).orders.length, 1);
+
+  await app.close();
+});
+
+test("orders endpoint returns proper edge-case errors", { concurrency: false }, async () => {
+  const eventPasscode = "orders-errors-pass";
+  const created = createTestEvent({
+    eventName: createEventPrefix("orders-errors"),
+    eventPasscode,
+    adminUsername: "chef",
+    adminPassword: "secret123",
+  });
+  eventStore.activateEvent(created.id);
+
+  const db = new Database(created.dbFilePath);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS Tables (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      weight INTEGER NOT NULL DEFAULT 0,
+      isLocked INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS MenuCategories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      isLocked INTEGER NOT NULL DEFAULT 0,
+      weight INTEGER NOT NULL DEFAULT 0,
+      printer_id INTEGER,
+      orderDisplay_id INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS MenuItems (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      weight INTEGER NOT NULL DEFAULT 0,
+      price REAL NOT NULL DEFAULT 0,
+      isLocked INTEGER NOT NULL DEFAULT 0,
+      menuCategory_id INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS StockItems (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      quantity INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE TABLE IF NOT EXISTS StockItemMenuItem (
+      stockItem_id INTEGER NOT NULL,
+      menuItem_id INTEGER NOT NULL,
+      quantityRequired INTEGER NOT NULL,
+      PRIMARY KEY (stockItem_id, menuItem_id)
+    );
+  `);
+
+  const lockedTableId = Number(
+    db.prepare("INSERT INTO Tables (name, weight, isLocked) VALUES (?, ?, ?)").run("L1", 0, 1)
+      .lastInsertRowid
+  );
+  const openTableId = Number(
+    db.prepare("INSERT INTO Tables (name, weight, isLocked) VALUES (?, ?, ?)").run("L2", 1, 0)
+      .lastInsertRowid
+  );
+
+  const openCategoryId = Number(
+    db
+      .prepare("INSERT INTO MenuCategories (name, description, isLocked, weight) VALUES (?, ?, ?, ?)")
+      .run("Open", "", 0, 0).lastInsertRowid
+  );
+  const lockedCategoryId = Number(
+    db
+      .prepare("INSERT INTO MenuCategories (name, description, isLocked, weight) VALUES (?, ?, ?, ?)")
+      .run("Locked", "", 1, 0).lastInsertRowid
+  );
+
+  const outOfStockMenuItemId = Number(
+    db.prepare(
+      "INSERT INTO MenuItems (name, description, weight, price, isLocked, menuCategory_id) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("Fries", "", 0, 3.2, 0, openCategoryId).lastInsertRowid
+  );
+  const lockedMenuItemId = Number(
+    db.prepare(
+      "INSERT INTO MenuItems (name, description, weight, price, isLocked, menuCategory_id) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run("Soup", "", 0, 4.1, 0, lockedCategoryId).lastInsertRowid
+  );
+
+  const stockItemId = Number(
+    db.prepare("INSERT INTO StockItems (name, quantity) VALUES (?, ?)").run("Potato", 0).lastInsertRowid
+  );
+  db.prepare(
+    "INSERT INTO StockItemMenuItem (stockItem_id, menuItem_id, quantityRequired) VALUES (?, ?, ?)"
+  ).run(stockItemId, outOfStockMenuItemId, 1);
+
+  db.close();
+
+  const app = await buildApp();
+  const waiter = await loginWaiter(app, eventPasscode, "waiter-errors");
+
+  const lockedTable = await app.inject({
+    method: "POST",
+    url: "/orders",
+    headers: { authorization: `Bearer ${waiter.accessToken}` },
+    payload: {
+      tableId: lockedTableId,
+      items: [{ menuItemId: outOfStockMenuItemId, quantity: 1 }],
+    },
+  });
+  assert.equal(lockedTable.statusCode, 409);
+  assert.equal(lockedTable.json().error.code, "TABLE_LOCKED");
+
+  const lockedCategory = await app.inject({
+    method: "POST",
+    url: "/orders",
+    headers: { authorization: `Bearer ${waiter.accessToken}` },
+    payload: {
+      tableId: openTableId,
+      items: [{ menuItemId: lockedMenuItemId, quantity: 1 }],
+    },
+  });
+  assert.equal(lockedCategory.statusCode, 409);
+  assert.equal(lockedCategory.json().error.code, "MENU_CATEGORY_LOCKED");
+
+  const outOfStock = await app.inject({
+    method: "POST",
+    url: "/orders",
+    headers: { authorization: `Bearer ${waiter.accessToken}` },
+    payload: {
+      tableId: openTableId,
+      items: [{ menuItemId: outOfStockMenuItemId, quantity: 1 }],
+    },
+  });
+  assert.equal(outOfStock.statusCode, 422);
+  assert.equal(outOfStock.json().error.code, "OUT_OF_STOCK");
+
+  await app.close();
+});
+

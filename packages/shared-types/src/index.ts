@@ -792,6 +792,45 @@ export type OrderSubmitRequest = z.infer<typeof OrderSubmitRequestSchema>;
 export const OrderSubmitResponseSchema = OrderDtoSchema;
 export type OrderSubmitResponse = OrderDto;
 
+export const OrdersQuerySchema = z
+  .object({
+    tableId: z.coerce.number().int().positive().optional(),
+    userId: z.coerce.number().int().positive().optional(),
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+  })
+  .strict()
+  .refine(
+    (value) => {
+      if (!value.from || !value.to) {
+        return true;
+      }
+      return value.from <= value.to;
+    },
+    {
+      message: "from must be before or equal to to",
+      path: ["from"],
+    }
+  );
+export type OrdersQuery = z.infer<typeof OrdersQuerySchema>;
+
+export const OrderParamsSchema = z
+  .object({
+    orderId: z.coerce.number().int().positive(),
+  })
+  .strict();
+export type OrderParams = z.infer<typeof OrderParamsSchema>;
+
+export const OrdersResponseSchema = z
+  .object({
+    orders: z.array(OrderDtoSchema),
+  })
+  .strict();
+export type OrdersResponse = z.infer<typeof OrdersResponseSchema>;
+
+export const OrderGetResponseSchema = OrderDtoSchema;
+export type OrderGetResponse = OrderDto;
+
 export const ApiErrorEnvelopeSchema = z
   .object({
     error: z
