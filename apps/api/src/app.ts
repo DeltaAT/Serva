@@ -13,6 +13,7 @@ import { registerErrorHandler } from "./plugins/error-handler";
 import { registerJwtAuthGuard } from "./plugins/jwt-auth-guard";
 import { registerAdminEventRoutes } from "./routes/admin-events";
 import { registerAuthRoutes } from "./routes/auth";
+import { registerConfigRoutes } from "./routes/config";
 import { registerMenuRoutes } from "./routes/menu";
 import { registerOpsRoutes } from "./routes/operations";
 import { registerPrinterRoutes } from "./routes/printers";
@@ -40,6 +41,7 @@ export async function buildApp() {
       tags: [
         { name: "admin-events", description: "Admin event lifecycle endpoints" },
         { name: "auth", description: "Authentication endpoints" },
+        { name: "config", description: "Event configuration endpoints" },
         { name: "menu", description: "Menu categories and items" },
         { name: "printers", description: "Printer management and test-print endpoints" },
         { name: "stock", description: "Stock item management" },
@@ -73,6 +75,7 @@ export async function buildApp() {
   registerOpsRoutes(app);
   registerAdminEventRoutes(app);
   registerAuthRoutes(app);
+  registerConfigRoutes(app);
   registerPrinterRoutes(app);
   registerUserRoutes(app);
   registerMenuRoutes(app);
