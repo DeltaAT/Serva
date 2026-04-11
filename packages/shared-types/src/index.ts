@@ -594,6 +594,30 @@ export const PrinterTestPrintResponseSchema = z
   .strict();
 export type PrinterTestPrintResponse = z.infer<typeof PrinterTestPrintResponseSchema>;
 
+export const ConfigValuesSchema = z.record(nonEmptyString, z.string());
+export type ConfigValues = z.infer<typeof ConfigValuesSchema>;
+
+export const ConfigGetResponseSchema = z
+  .object({
+    values: ConfigValuesSchema,
+  })
+  .strict();
+export type ConfigGetResponse = z.infer<typeof ConfigGetResponseSchema>;
+
+export const ConfigPatchRequestSchema = z
+  .object({
+    values: ConfigValuesSchema,
+  })
+  .strict()
+  .refine((value) => Object.keys(value.values).length > 0, {
+    message: "At least one config key must be provided",
+    path: ["values"],
+  });
+export type ConfigPatchRequest = z.infer<typeof ConfigPatchRequestSchema>;
+
+export const ConfigPatchResponseSchema = ConfigGetResponseSchema;
+export type ConfigPatchResponse = ConfigGetResponse;
+
 export const OrderSubmitItemRequestSchema = z
   .object({
     menuItemId: positiveInt,
