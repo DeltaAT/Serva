@@ -532,6 +532,68 @@ export type MenuItemStockRequirementsReplaceResponse = z.infer<
   typeof MenuItemStockRequirementsReplaceResponseSchema
 >;
 
+export const PrinterDtoSchema = z
+  .object({
+    id: positiveInt,
+    name: nonEmptyString,
+    ipAddress: nonEmptyString,
+    connectionDetails: z.string(),
+  })
+  .strict();
+export type PrinterDto = z.infer<typeof PrinterDtoSchema>;
+
+export const PrintersResponseSchema = z
+  .object({
+    printers: z.array(PrinterDtoSchema),
+  })
+  .strict();
+export type PrintersResponse = z.infer<typeof PrintersResponseSchema>;
+
+export const PrinterCreateRequestSchema = z
+  .object({
+    name: nonEmptyString,
+    ipAddress: nonEmptyString,
+    connectionDetails: z.string().trim().max(500).optional(),
+  })
+  .strict();
+export type PrinterCreateRequest = z.infer<typeof PrinterCreateRequestSchema>;
+
+export const PrinterCreateResponseSchema = PrinterDtoSchema;
+export type PrinterCreateResponse = PrinterDto;
+
+export const PrinterUpdateRequestSchema = z
+  .object({
+    name: nonEmptyString.optional(),
+    ipAddress: nonEmptyString.optional(),
+    connectionDetails: z.string().trim().max(500).optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, {
+    message: "At least one field must be provided",
+  });
+export type PrinterUpdateRequest = z.infer<typeof PrinterUpdateRequestSchema>;
+
+export const PrinterGetResponseSchema = PrinterDtoSchema;
+export type PrinterGetResponse = PrinterDto;
+
+export const PrinterUpdateResponseSchema = PrinterDtoSchema;
+export type PrinterUpdateResponse = PrinterDto;
+
+export const PrinterParamsSchema = z
+  .object({
+    printerId: z.coerce.number().int().positive(),
+  })
+  .strict();
+export type PrinterParams = z.infer<typeof PrinterParamsSchema>;
+
+export const PrinterTestPrintResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    message: nonEmptyString,
+  })
+  .strict();
+export type PrinterTestPrintResponse = z.infer<typeof PrinterTestPrintResponseSchema>;
+
 export const OrderSubmitItemRequestSchema = z
   .object({
     menuItemId: positiveInt,

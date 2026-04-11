@@ -261,6 +261,9 @@ Abhängigkeiten MenuItem ↔ StockItems ersetzen.
 ### GET `/printers`
 **Auth:** `admin`
 
+**Response 200**
+- `printers: PrinterDto[]`
+
 ### POST `/printers`
 **Auth:** `admin`
 
@@ -268,6 +271,35 @@ Abhängigkeiten MenuItem ↔ StockItems ersetzen.
 - `name: string`
 - `ipAddress: string`
 - `connectionDetails: string?`
+
+**Statuscodes:** `201`, `400`, `409`
+
+### GET `/printers/{printerId}`
+Einzelnen Drucker abrufen.
+
+**Auth:** `admin`
+
+**Statuscodes:** `200`, `404`
+
+### PATCH `/printers/{printerId}`
+Drucker aktualisieren.
+
+**Auth:** `admin`
+
+**Request (Beispiele)**
+- `{ "name": "Kitchen Updated" }`
+- `{ "ipAddress": "192.168.1.50", "connectionDetails": "9100" }`
+
+**Statuscodes:** `200`, `400`, `404`, `409`
+
+### DELETE `/printers/{printerId}`
+Drucker loeschen.
+
+**Auth:** `admin`
+
+**Hinweis:** `409`, wenn der Drucker noch in `MenuCategories.printer_id` verwendet wird.
+
+**Statuscodes:** `204`, `404`, `409`
 
 ### POST `/printers/{printerId}/test-print`
 Testdruck.
