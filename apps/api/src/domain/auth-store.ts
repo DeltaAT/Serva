@@ -49,6 +49,15 @@ export class AuthStore {
     }
 
     if (claims.role === "admin") {
+      if (!claims.eventId || !claims.username) {
+        throw new ApiError(401, "UNAUTHORIZED", "Invalid admin token");
+      }
+
+      const event = this.eventStore.getEvent(claims.eventId);
+      if (!event || event.adminUsername !== claims.username) {
+        throw new ApiError(401, "UNAUTHORIZED", "Invalid admin token");
+      }
+
       return {
         role: "admin" as const,
         eventId: claims.eventId,
