@@ -19,7 +19,7 @@ export function registerOrderRoutes(app: FastifyInstance) {
     "/orders",
     {
       config: {
-        requiresRole: "waiter",
+        requiresAuth: true,
         requiresActiveEvent: true,
       },
       schema: {
@@ -57,7 +57,7 @@ export function registerOrderRoutes(app: FastifyInstance) {
     "/orders",
     {
       config: {
-        requiresRole: "waiter",
+        requiresAuth: true,
         requiresActiveEvent: true,
       },
       schema: {
@@ -96,7 +96,7 @@ export function registerOrderRoutes(app: FastifyInstance) {
     "/orders/:orderId",
     {
       config: {
-        requiresRole: "waiter",
+        requiresAuth: true,
         requiresActiveEvent: true,
       },
       schema: {

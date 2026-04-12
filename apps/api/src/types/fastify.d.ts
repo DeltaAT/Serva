@@ -8,6 +8,7 @@ declare module "fastify" {
     requiresActiveEvent?: boolean;
     requiresAuth?: boolean;
     requiresRole?: SessionRole;
+    allowedRoles?: SessionRole[];
   }
 
   interface FastifyRequest {

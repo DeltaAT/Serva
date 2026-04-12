@@ -1,11 +1,25 @@
 ﻿import type { FastifyInstance } from "fastify";
+import { z } from "zod";
 import { ApiError } from "../domain/api-error";
+import { eventStore } from "../domain/state";
 
-const roleOrder = {
-  waiter: 1,
-  admin: 2,
-  master: 3,
-} as const;
+const AuthClaimsSchema = z.discriminatedUnion("role", [
+  z.object({ role: z.literal("master") }).passthrough(),
+  z
+    .object({
+      role: z.literal("admin"),
+      eventId: z.number().int().positive(),
+      username: z.string().trim().min(1),
+    })
+    .passthrough(),
+  z
+    .object({
+      role: z.literal("waiter"),
+      eventId: z.number().int().positive(),
+      username: z.string().trim().min(1),
+    })
+    .passthrough(),
+]);
 
 export function registerJwtAuthGuard(app: FastifyInstance) {
   app.addHook("preHandler", async (request) => {
@@ -26,23 +40,31 @@ export function registerJwtAuthGuard(app: FastifyInstance) {
     }
 
     try {
-      const payload = await request.jwtVerify<{
-        role: "master" | "admin" | "waiter";
-        eventId?: number;
-        username?: string;
-      }>();
-      request.auth = payload;
+      const payload = await request.jwtVerify();
+      request.auth = AuthClaimsSchema.parse(payload);
     } catch {
       throw new ApiError(401, "UNAUTHORIZED", "Invalid access token");
     }
 
+    const allowedRoles = routeConfig?.allowedRoles as Array<"master" | "admin" | "waiter"> | undefined;
     const minRole = routeConfig?.requiresRole;
-    if (!minRole) {
+    if (!minRole && !allowedRoles) {
       return;
     }
 
-    if (roleOrder[request.auth.role] < roleOrder[minRole]) {
+    if (allowedRoles) {
+      if (!allowedRoles.includes(request.auth.role)) {
+        throw new ApiError(403, "FORBIDDEN", `${allowedRoles.join(" or ")} role required`);
+      }
+    } else if (request.auth.role !== minRole) {
       throw new ApiError(403, "FORBIDDEN", `${minRole} role required`);
+    }
+
+    if (routeConfig?.requiresActiveEvent && request.auth.role !== "master") {
+      const activeEvent = eventStore.getActiveEvent();
+      if (activeEvent && request.auth.eventId !== activeEvent.id) {
+        throw new ApiError(403, "FORBIDDEN", "Token is bound to a different event");
+      }
     }
   });
 }

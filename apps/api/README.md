@@ -34,9 +34,16 @@ pnpm --filter api test
 
 ## Auth model
 
-- `master` can create/activate/deactivate/close events (`/admin/*`).
-- `admin` is event-scoped (`eventId`) and logs in with event-specific credentials.
-- `waiter` logs in with `username + eventPasscode` against the currently active event.
+- `master` can only use the dedicated event lifecycle endpoints under `/admin/events/*`.
+- `admin` is event-scoped (`eventId`) and can only use the routes of the currently active event it belongs to.
+- `waiter` can only use the waiter routes for the currently active event.
+- JWTs carry role-specific claims: `master` -> `role`, `admin` -> `role + eventId + username`, `waiter` -> `role + eventId + username`.
+
+### Error semantics
+
+- `401 UNAUTHORIZED`: missing, malformed, invalid or expired token.
+- `403 FORBIDDEN`: correct token format, but wrong role or wrong event binding.
+- `409 NO_ACTIVE_EVENT`: the requested operation requires an active event, but none exists.
 
 Configure in `apps/api/.env`:
 - `MASTER_USERNAME`
