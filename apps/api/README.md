@@ -31,6 +31,9 @@ pnpm --filter api test
 - Endpoints marked with `requiresActiveEvent` return `NO_ACTIVE_EVENT` (`409`) when no event is active.
 - Each event gets its own SQLite file under `apps/api/data/events/event-<id>.db`.
 - Control metadata (active event, admin credentials, passcode hash) is stored in `apps/api/data/control.db`.
+- `POST /admin/events/:eventId/deactivate` is the temporary off switch; it does not set `closedAt`.
+- `POST /admin/events/:eventId/close` is terminal; it sets `closedAt`, clears `isActive`, and cannot be repeated.
+- `DELETE /admin/events/:eventId` removes the control entry and the event database file.
 
 ## Auth model
 
@@ -49,6 +52,16 @@ Configure in `apps/api/.env`:
 - `MASTER_USERNAME`
 - `MASTER_PASSWORD`
 - `JWT_SECRET`
+
+## Smoke test
+
+Run the end-to-end backend verification script after starting the API:
+
+```powershell
+powershell -File scripts/smoke-test.ps1 -BaseUrl http://localhost:8787
+```
+
+The script exercises master login, event lifecycle, waiter/admin guards, CRUD flows, QR/PDF export, and Swagger UI loading.
 
 ### Master flow (create event)
 
