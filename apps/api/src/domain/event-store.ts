@@ -84,6 +84,15 @@ export class EventStore {
     return dbPath;
   }
 
+  private isUniqueConstraintError(error: unknown) {
+    return (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "SQLITE_CONSTRAINT_UNIQUE"
+    );
+  }
+
   createEvent(input: {
     eventName: string;
     eventPasscode: string;
@@ -98,6 +107,10 @@ export class EventStore {
       `
     );
 
+    let eventId: number | null = null;
+    let dbFilePath: string | null = null;
+    let created: EventRecord | null = null;
+
     try {
       const result = insert.run(
         input.eventName,
@@ -107,16 +120,63 @@ export class EventStore {
         "",
         now
       );
-      const eventId = Number(result.lastInsertRowid);
-      const dbFilePath = this.createEventDatabase(eventId);
+
+      eventId = Number(result.lastInsertRowid);
+      dbFilePath = this.createEventDatabase(eventId);
       this.controlDb
         .prepare("UPDATE Events SET dbFilePath = ? WHERE id = ?")
         .run(dbFilePath, eventId);
 
-      return this.getEvent(eventId) as EventRecord;
-    } catch {
-      throw new ApiError(409, "EVENT_ALREADY_EXISTS", "Event name already exists");
+      created = this.getEvent(eventId);
+    } catch (error) {
+      if (eventId !== null) {
+        try {
+          if (dbFilePath) {
+            rmSync(dbFilePath, { force: true });
+          }
+        } catch {
+          // Ignore cleanup errors here; the control row is removed below if it exists.
+        }
+
+        try {
+          this.controlDb.prepare("DELETE FROM Events WHERE id = ?").run(eventId);
+        } catch {
+          // Ignore cleanup errors; the original error will be reported below.
+        }
+      }
+
+      if (this.isUniqueConstraintError(error)) {
+        throw new ApiError(409, "EVENT_ALREADY_EXISTS", "Event name already exists");
+      }
+
+      if (error instanceof ApiError) {
+        throw error;
+      }
+
+      throw new ApiError(500, "EVENT_CREATE_FAILED", "Failed to create event", error);
     }
+
+    if (!created) {
+      if (eventId !== null) {
+        try {
+          if (dbFilePath) {
+            rmSync(dbFilePath, { force: true });
+          }
+        } catch {
+          // Ignore cleanup errors here; the control row is removed below if it exists.
+        }
+
+        try {
+          this.controlDb.prepare("DELETE FROM Events WHERE id = ?").run(eventId);
+        } catch {
+          // Ignore cleanup errors; the caller still receives a deterministic failure.
+        }
+      }
+
+      throw new ApiError(500, "EVENT_CREATE_FAILED", "Failed to load created event");
+    }
+
+    return created;
   }
 
   getEvent(eventId: number) {
@@ -183,6 +243,10 @@ export class EventStore {
       throw new ApiError(404, "EVENT_NOT_FOUND", "Event not found");
     }
 
+    if (target.closedAt) {
+      throw new ApiError(409, "EVENT_CLOSED", "Closed event cannot be deactivated");
+    }
+
     this.controlDb.prepare("UPDATE Events SET isActive = 0 WHERE id = ?").run(eventId);
     return this.getEvent(eventId) as EventRecord;
   }
@@ -193,10 +257,16 @@ export class EventStore {
       throw new ApiError(404, "EVENT_NOT_FOUND", "Event not found");
     }
 
+    if (target.closedAt) {
+      throw new ApiError(409, "EVENT_CLOSED", "Closed event cannot be closed again");
+    }
+
     const closedAt = new Date().toISOString();
-    this.controlDb
-      .prepare("UPDATE Events SET isActive = 0, closedAt = ? WHERE id = ?")
-      .run(closedAt, eventId);
+    this.controlDb.transaction(() => {
+      this.controlDb
+        .prepare("UPDATE Events SET isActive = 0, closedAt = ? WHERE id = ?")
+        .run(closedAt, eventId);
+    })();
     return this.getEvent(eventId) as EventRecord;
   }
 
@@ -206,10 +276,11 @@ export class EventStore {
       throw new ApiError(404, "EVENT_NOT_FOUND", "Event not found");
     }
 
-    this.controlDb.prepare("DELETE FROM Events WHERE id = ?").run(eventId);
-
     try {
-      rmSync(target.dbFilePath, { force: true });
+      this.controlDb.transaction(() => {
+        this.controlDb.prepare("DELETE FROM Events WHERE id = ?").run(eventId);
+        rmSync(target.dbFilePath, { force: true });
+      })();
     } catch (error) {
       throw new ApiError(500, "EVENT_DELETE_FAILED", "Failed to delete event database file", error);
     }
