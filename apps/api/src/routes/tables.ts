@@ -21,6 +21,14 @@ import QRCode from "qrcode";
 import { z } from "zod";
 import { tableStore } from "../domain/state";
 
+const TableQrSvgResponseSchema = z.string().meta({
+  description: "SVG image containing the QR code for a table.",
+});
+
+const TablesQrPdfResponseSchema = z.string().meta({
+  description: "PDF document containing QR codes for all tables of the active event.",
+});
+
 function escapeXml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -293,6 +301,7 @@ export function registerTableRoutes(app: FastifyInstance) {
         security: [{ bearerAuth: [] }],
         params: TableParamsSchema,
         response: {
+          200: TableQrSvgResponseSchema,
           401: ApiErrorEnvelopeSchema,
           403: ApiErrorEnvelopeSchema,
           404: ApiErrorEnvelopeSchema,
@@ -322,7 +331,7 @@ export function registerTableRoutes(app: FastifyInstance) {
           "Erzeugt eine PDF fuer alle Tische des aktiven Events (pro Seite zwei QR-Codes mit Trennlinie und Tischname).",
         security: [{ bearerAuth: [] }],
         response: {
-          200: z.unknown().describe("PDF document containing table QR codes"),
+          200: TablesQrPdfResponseSchema,
           401: ApiErrorEnvelopeSchema,
           403: ApiErrorEnvelopeSchema,
           409: ApiErrorEnvelopeSchema,

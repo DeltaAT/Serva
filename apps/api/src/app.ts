@@ -22,6 +22,34 @@ import { registerStockRoutes } from "./routes/stock";
 import { registerTableRoutes } from "./routes/tables";
 import { registerUserRoutes } from "./routes/users";
 
+function patchSwaggerObject(swaggerObject: Record<string, any>) {
+  const tableSvgResponse = swaggerObject.paths?.["/tables/{tableId}/qr"]?.get?.responses?.["200"];
+  if (tableSvgResponse) {
+    tableSvgResponse.content = {
+      "image/svg+xml": {
+        schema: {
+          type: "string",
+          example: '<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg"></svg>',
+        },
+      },
+    };
+  }
+
+  const tablesPdfResponse = swaggerObject.paths?.["/tables/qr.pdf"]?.get?.responses?.["200"];
+  if (tablesPdfResponse) {
+    tablesPdfResponse.content = {
+      "application/pdf": {
+        schema: {
+          type: "string",
+          format: "binary",
+        },
+      },
+    };
+  }
+
+  return swaggerObject;
+}
+
 export async function buildApp() {
   const app = Fastify({ logger: true }).withTypeProvider<ZodTypeProvider>();
 
@@ -62,6 +90,14 @@ export async function buildApp() {
     },
     transform: jsonSchemaTransform,
   });
+
+  const swaggerApp = app as typeof app & { swagger: (...args: Array<unknown>) => unknown };
+  const originalSwagger = swaggerApp.swagger.bind(swaggerApp);
+  swaggerApp.swagger = ((...args: Array<unknown>) => {
+    const result = originalSwagger(...args) as Record<string, any>;
+    patchSwaggerObject(result);
+    return result;
+  }) as typeof swaggerApp.swagger;
 
   await app.register(swaggerUi, {
     routePrefix: "/documentation",
