@@ -5,21 +5,14 @@ import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 import { setupEventTestUtils } from "../test-utils/event-test-utils";
 
-const { createEventPrefix, createTestEvent, forgetEvent } = setupEventTestUtils(test, eventStore);
-
-async function loginMaster(app: Awaited<ReturnType<typeof buildApp>>) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/master/login",
-    payload: {
-      username: process.env.MASTER_USERNAME,
-      password: process.env.MASTER_PASSWORD,
-    },
-  });
-
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
+const {
+  createEventPrefix,
+  createTestEvent,
+  forgetEvent,
+  createAppFixture,
+  configureMasterCredentials,
+  createAuthFixture,
+} = setupEventTestUtils(test, eventStore);
 
 async function createEvent(
   app: Awaited<ReturnType<typeof buildApp>>,
@@ -50,11 +43,11 @@ async function createEvent(
 }
 
 test("event lifecycle keeps exactly one active event and cleans up deleted event dbs", { concurrency: false }, async () => {
-  process.env.MASTER_USERNAME = "master";
-  process.env.MASTER_PASSWORD = "master-secret";
+  configureMasterCredentials();
 
-  const app = await buildApp();
-  const masterToken = await loginMaster(app);
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const masterToken = await auth.loginMaster();
 
   const first = createEventPrefix("admin-event-lifecycle-a");
   const second = createEventPrefix("admin-event-lifecycle-b");
@@ -190,15 +183,14 @@ test("event lifecycle keeps exactly one active event and cleans up deleted event
   assert.equal(eventStore.getActiveEvent(), null);
   forgetEvent(createdSecond.id);
 
-  await app.close();
 });
 
 test("create event endpoint rejects duplicate event names", { concurrency: false }, async () => {
-  process.env.MASTER_USERNAME = "master";
-  process.env.MASTER_PASSWORD = "master-secret";
+  configureMasterCredentials();
 
-  const app = await buildApp();
-  const masterToken = await loginMaster(app);
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const masterToken = await auth.loginMaster();
   const eventName = createEventPrefix("admin-event-duplicate");
 
   const first = await createEvent(app, masterToken, {
@@ -231,12 +223,10 @@ test("create event endpoint rejects duplicate event names", { concurrency: false
   assert.equal(deleteFirst.statusCode, 204);
   forgetEvent(first.id);
 
-  await app.close();
 });
 
 test("delete event endpoint rejects unauthorized requests", { concurrency: false }, async () => {
-  process.env.MASTER_USERNAME = "master";
-  process.env.MASTER_PASSWORD = "master-secret";
+  configureMasterCredentials();
 
   const created = createTestEvent({
     eventName: createEventPrefix("admin-delete-unauthorized"),
@@ -245,7 +235,7 @@ test("delete event endpoint rejects unauthorized requests", { concurrency: false
     adminPassword: "secret123",
   });
 
-  const app = await buildApp();
+  const app = await createAppFixture(buildApp);
   const response = await app.inject({
     method: "DELETE",
     url: `/admin/events/${created.id}`,
@@ -253,12 +243,10 @@ test("delete event endpoint rejects unauthorized requests", { concurrency: false
 
   assert.equal(response.statusCode, 401);
   assert.equal(response.json().error.code, "UNAUTHORIZED");
-  await app.close();
 });
 
 test("master can delete inactive event", { concurrency: false }, async () => {
-  process.env.MASTER_USERNAME = "master";
-  process.env.MASTER_PASSWORD = "master-secret";
+  configureMasterCredentials();
 
   const created = createTestEvent({
     eventName: createEventPrefix("admin-delete-inactive"),
@@ -267,8 +255,9 @@ test("master can delete inactive event", { concurrency: false }, async () => {
     adminPassword: "secret123",
   });
 
-  const app = await buildApp();
-  const masterToken = await loginMaster(app);
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const masterToken = await auth.loginMaster();
 
   const response = await app.inject({
     method: "DELETE",
@@ -279,12 +268,10 @@ test("master can delete inactive event", { concurrency: false }, async () => {
   assert.equal(response.statusCode, 204);
   forgetEvent(created.id);
   assert.equal(eventStore.getEvent(created.id), null);
-  await app.close();
 });
 
 test("master can delete active event and active event becomes empty", { concurrency: false }, async () => {
-  process.env.MASTER_USERNAME = "master";
-  process.env.MASTER_PASSWORD = "master-secret";
+  configureMasterCredentials();
 
   const created = createTestEvent({
     eventName: createEventPrefix("admin-delete-active"),
@@ -294,8 +281,9 @@ test("master can delete active event and active event becomes empty", { concurre
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const masterToken = await loginMaster(app);
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const masterToken = await auth.loginMaster();
 
   const response = await app.inject({
     method: "DELETE",
@@ -307,15 +295,14 @@ test("master can delete active event and active event becomes empty", { concurre
   forgetEvent(created.id);
   assert.equal(eventStore.getEvent(created.id), null);
   assert.equal(eventStore.getActiveEvent(), null);
-  await app.close();
 });
 
 test("delete event endpoint returns not found for unknown event", { concurrency: false }, async () => {
-  process.env.MASTER_USERNAME = "master";
-  process.env.MASTER_PASSWORD = "master-secret";
+  configureMasterCredentials();
 
-  const app = await buildApp();
-  const masterToken = await loginMaster(app);
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const masterToken = await auth.loginMaster();
 
   const response = await app.inject({
     method: "DELETE",
@@ -325,6 +312,5 @@ test("delete event endpoint returns not found for unknown event", { concurrency:
 
   assert.equal(response.statusCode, 404);
   assert.equal(response.json().error.code, "EVENT_NOT_FOUND");
-  await app.close();
 });
 

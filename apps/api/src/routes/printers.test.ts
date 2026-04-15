@@ -6,34 +6,10 @@ import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 import { setupEventTestUtils } from "../test-utils/event-test-utils";
 
-const { createTestEvent, createEventPrefix } = setupEventTestUtils(test, eventStore);
-
-async function loginWaiter(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  eventPasscode: string,
-  username = "waiter"
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/login",
-    payload: { username, eventPasscode },
-  });
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
-
-async function loginAdmin(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  input: { eventId: number; username: string; password: string }
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/admin/login",
-    payload: input,
-  });
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
+const { createTestEvent, createEventPrefix, createAppFixture, createAuthFixture } = setupEventTestUtils(
+  test,
+  eventStore
+);
 
 async function createFakeThermalPrinterServer() {
   let receivedBytes = 0;
@@ -97,7 +73,7 @@ function seedMenuCategoryWithPrinter(dbFilePath: string, printerId: number) {
 }
 
 test("printers endpoints reject unauthorized requests", { concurrency: false }, async () => {
-  const app = await buildApp();
+  const app = await createAppFixture(buildApp);
   const response = await app.inject({
     method: "GET",
     url: "/printers",
@@ -105,7 +81,6 @@ test("printers endpoints reject unauthorized requests", { concurrency: false }, 
 
   assert.equal(response.statusCode, 401);
   assert.equal(response.json().error.code, "UNAUTHORIZED");
-  await app.close();
 });
 
 test("printers endpoints require active event", { concurrency: false }, async () => {
@@ -117,8 +92,9 @@ test("printers endpoints require active event", { concurrency: false }, async ()
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const adminToken = await loginAdmin(app, {
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const adminToken = await auth.loginAdmin({
     eventId: created.id,
     username: "chef",
     password: "secret123",
@@ -134,7 +110,6 @@ test("printers endpoints require active event", { concurrency: false }, async ()
 
   assert.equal(response.statusCode, 409);
   assert.equal(response.json().error.code, "NO_ACTIVE_EVENT");
-  await app.close();
 });
 
 test("waiter session cannot access printer admin endpoints", { concurrency: false }, async () => {
@@ -147,8 +122,9 @@ test("waiter session cannot access printer admin endpoints", { concurrency: fals
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const waiterToken = await loginWaiter(app, eventPasscode, "waiter-printer");
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiterToken = (await auth.loginWaiter({ username: "waiter-printer", eventPasscode })).accessToken;
 
   const response = await app.inject({
     method: "POST",
@@ -159,7 +135,6 @@ test("waiter session cannot access printer admin endpoints", { concurrency: fals
 
   assert.equal(response.statusCode, 403);
   assert.equal(response.json().error.code, "FORBIDDEN");
-  await app.close();
 });
 
 test("admin can create/list printers and send test print", { concurrency: false }, async () => {
@@ -173,8 +148,9 @@ test("admin can create/list printers and send test print", { concurrency: false 
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const adminToken = await loginAdmin(app, {
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const adminToken = await auth.loginAdmin({
     eventId: created.id,
     username: "chef",
     password: adminPassword,
@@ -274,7 +250,6 @@ test("admin can create/list printers and send test print", { concurrency: false 
 
     assert.ok(fakePrinter.getConnections() > 0);
   } finally {
-    await app.close();
     await fakePrinter.close();
   }
 });

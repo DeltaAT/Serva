@@ -5,7 +5,10 @@ import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 import { setupEventTestUtils } from "../test-utils/event-test-utils";
 
-const { createTestEvent, createEventPrefix } = setupEventTestUtils(test, eventStore);
+const { createTestEvent, createEventPrefix, createAppFixture, createAuthFixture } = setupEventTestUtils(
+  test,
+  eventStore
+);
 
 function seedMenu(
   dbFilePath: string,
@@ -84,35 +87,8 @@ function seedMenu(
 }
 
 
-async function loginWaiter(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  eventPasscode: string,
-  username = "waiter"
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/login",
-    payload: { username, eventPasscode },
-  });
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
-
-async function loginAdmin(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  input: { eventId: number; username: string; password: string }
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/admin/login",
-    payload: input,
-  });
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
-
 test("menu endpoints reject unauthorized requests", { concurrency: false }, async () => {
-  const app = await buildApp();
+  const app = await createAppFixture(buildApp);
   const response = await app.inject({
     method: "GET",
     url: "/menu/categories",
@@ -120,7 +96,6 @@ test("menu endpoints reject unauthorized requests", { concurrency: false }, asyn
 
   assert.equal(response.statusCode, 401);
   assert.equal(response.json().error.code, "UNAUTHORIZED");
-  await app.close();
 });
 
 test("menu endpoints require an active event", { concurrency: false }, async () => {
@@ -133,8 +108,9 @@ test("menu endpoints require an active event", { concurrency: false }, async () 
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const waiterToken = await loginWaiter(app, eventPasscode);
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiterToken = (await auth.loginWaiter({ username: "waiter", eventPasscode })).accessToken;
 
   eventStore.deactivateEvent(created.id);
 
@@ -146,7 +122,6 @@ test("menu endpoints require an active event", { concurrency: false }, async () 
 
   assert.equal(response.statusCode, 409);
   assert.equal(response.json().error.code, "NO_ACTIVE_EVENT");
-  await app.close();
 });
 
 test("menu list returns only active event and sorts by weight", { concurrency: false }, async () => {
@@ -181,8 +156,9 @@ test("menu list returns only active event and sorts by weight", { concurrency: f
     items: [],
   });
 
-  const app = await buildApp();
-  const waiterToken = await loginWaiter(app, eventPasscode, "sort-waiter");
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiterToken = (await auth.loginWaiter({ username: "sort-waiter", eventPasscode })).accessToken;
 
   const categoriesResponse = await app.inject({
     method: "GET",
@@ -210,7 +186,6 @@ test("menu list returns only active event and sorts by weight", { concurrency: f
     ["Beer", "Water"]
   );
 
-  await app.close();
 });
 
 test("admin CRUD for menu categories and items works", { concurrency: false }, async () => {
@@ -223,8 +198,9 @@ test("admin CRUD for menu categories and items works", { concurrency: false }, a
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const adminToken = await loginAdmin(app, {
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const adminToken = await auth.loginAdmin({
     eventId: created.id,
     username: "chef",
     password: adminPassword,
@@ -290,6 +266,5 @@ test("admin CRUD for menu categories and items works", { concurrency: false }, a
   });
   assert.equal(deleteCategory.statusCode, 204);
 
-  await app.close();
 });
 

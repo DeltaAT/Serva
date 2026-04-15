@@ -5,7 +5,10 @@ import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 import { setupEventTestUtils } from "../test-utils/event-test-utils";
 
-const { createTestEvent, createEventPrefix } = setupEventTestUtils(test, eventStore);
+const { createTestEvent, createEventPrefix, createAppFixture, createAuthFixture } = setupEventTestUtils(
+  test,
+  eventStore
+);
 
 function seedTables(
   dbFilePath: string,
@@ -30,35 +33,8 @@ function seedTables(
   db.close();
 }
 
-async function loginWaiter(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  eventPasscode: string,
-  username = "waiter"
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/login",
-    payload: { username, eventPasscode },
-  });
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
-
-async function loginAdmin(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  input: { eventId: number; username: string; password: string }
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/admin/login",
-    payload: input,
-  });
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
-
 test("tables endpoint rejects unauthorized requests", { concurrency: false }, async () => {
-  const app = await buildApp();
+  const app = await createAppFixture(buildApp);
 
   const response = await app.inject({
     method: "GET",
@@ -67,7 +43,6 @@ test("tables endpoint rejects unauthorized requests", { concurrency: false }, as
 
   assert.equal(response.statusCode, 401);
   assert.equal(response.json().error.code, "UNAUTHORIZED");
-  await app.close();
 });
 
 test("waiter session can access GET /tables", { concurrency: false }, async () => {
@@ -81,8 +56,9 @@ test("waiter session can access GET /tables", { concurrency: false }, async () =
   eventStore.activateEvent(created.id);
   seedTables(created.dbFilePath, [{ name: "A1", weight: 1 }]);
 
-  const app = await buildApp();
-  const waiterToken = await loginWaiter(app, eventPasscode);
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiterToken = (await auth.loginWaiter({ username: "waiter", eventPasscode })).accessToken;
 
   const response = await app.inject({
     method: "GET",
@@ -93,7 +69,6 @@ test("waiter session can access GET /tables", { concurrency: false }, async () =
   assert.equal(response.statusCode, 200);
   const body = response.json() as { tables: Array<{ name: string }> };
   assert.deepEqual(body.tables.map((table) => table.name), ["A1"]);
-  await app.close();
 });
 
 test("tables endpoint requires active event", { concurrency: false }, async () => {
@@ -106,8 +81,9 @@ test("tables endpoint requires active event", { concurrency: false }, async () =
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const waiterToken = await loginWaiter(app, eventPasscode);
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiterToken = (await auth.loginWaiter({ username: "waiter", eventPasscode })).accessToken;
 
   eventStore.deactivateEvent(created.id);
 
@@ -119,7 +95,6 @@ test("tables endpoint requires active event", { concurrency: false }, async () =
 
   assert.equal(response.statusCode, 409);
   assert.equal(response.json().error.code, "NO_ACTIVE_EVENT");
-  await app.close();
 });
 
 test("GET /tables returns only active event and sorts by weight", { concurrency: false }, async () => {
@@ -144,8 +119,9 @@ test("GET /tables returns only active event and sorts by weight", { concurrency:
   });
   seedTables(inactiveEvent.dbFilePath, [{ name: "ZZ1", weight: 0 }]);
 
-  const app = await buildApp();
-  const waiterToken = await loginWaiter(app, eventPasscode, "sort-waiter");
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiterToken = (await auth.loginWaiter({ username: "sort-waiter", eventPasscode })).accessToken;
 
   const response = await app.inject({
     method: "GET",
@@ -156,7 +132,6 @@ test("GET /tables returns only active event and sorts by weight", { concurrency:
   assert.equal(response.statusCode, 200);
   const body = response.json() as { tables: Array<{ name: string }> };
   assert.deepEqual(body.tables.map((table) => table.name), ["A1", "B2"]);
-  await app.close();
 });
 
 test("admin CRUD and bulk table endpoints work", { concurrency: false }, async () => {
@@ -169,8 +144,9 @@ test("admin CRUD and bulk table endpoints work", { concurrency: false }, async (
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const adminToken = await loginAdmin(app, {
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const adminToken = await auth.loginAdmin({
     eventId: created.id,
     username: "chef",
     password: adminPassword,
@@ -237,7 +213,10 @@ test("admin CRUD and bulk table endpoints work", { concurrency: false }, async (
   assert.match(qrPdf.headers["content-type"] ?? "", /application\/pdf/);
   assert.equal(qrPdf.body.startsWith("%PDF-"), true);
 
-  const waiterToken = await loginWaiter(app, "tables-crud-pass", "crud-waiter");
+  const waiterToken = (await auth.loginWaiter({
+    username: "crud-waiter",
+    eventPasscode: "tables-crud-pass",
+  })).accessToken;
   const waiterCreate = await app.inject({
     method: "POST",
     url: "/tables",
@@ -246,6 +225,5 @@ test("admin CRUD and bulk table endpoints work", { concurrency: false }, async (
   });
   assert.equal(waiterCreate.statusCode, 403);
 
-  await app.close();
 });
 
