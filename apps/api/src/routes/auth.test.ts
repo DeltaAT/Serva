@@ -4,58 +4,17 @@ import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 import { setupEventTestUtils } from "../test-utils/event-test-utils";
 
-const { createEventPrefix, createTestEvent } = setupEventTestUtils(test, eventStore);
-
-function configureMasterCredentials() {
-  process.env.MASTER_USERNAME = "master";
-  process.env.MASTER_PASSWORD = "master-secret";
-}
-
-async function loginMaster(app: Awaited<ReturnType<typeof buildApp>>) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/master/login",
-    payload: {
-      username: process.env.MASTER_USERNAME,
-      password: process.env.MASTER_PASSWORD,
-    },
-  });
-
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
-
-async function loginAdmin(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  input: { eventId: number; username: string; password: string }
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/admin/login",
-    payload: input,
-  });
-
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
-
-async function loginWaiter(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  input: { username: string; eventPasscode: string }
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/login",
-    payload: input,
-  });
-
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
+const {
+  createEventPrefix,
+  createTestEvent,
+  createAppFixture,
+  configureMasterCredentials,
+  createAuthFixture,
+} = setupEventTestUtils(test, eventStore);
 
 test("auth endpoints reject missing, invalid and expired tokens", { concurrency: false }, async () => {
   configureMasterCredentials();
-  const app = await buildApp();
+  const app = await createAppFixture(buildApp);
 
   const missingToken = await app.inject({
     method: "GET",
@@ -87,7 +46,6 @@ test("auth endpoints reject missing, invalid and expired tokens", { concurrency:
   assert.equal(expiredResponse.statusCode, 401);
   assert.equal(expiredResponse.json().error.code, "UNAUTHORIZED");
 
-  await app.close();
 });
 
 test("roles are enforced exactly on protected routes", { concurrency: false }, async () => {
@@ -101,12 +59,13 @@ test("roles are enforced exactly on protected routes", { concurrency: false }, a
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const masterToken = await loginMaster(app);
-  const waiterToken = await loginWaiter(app, {
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const masterToken = await auth.loginMaster();
+  const waiterToken = (await auth.loginWaiter({
     username: "waiter-role-check",
     eventPasscode: "role-pass",
-  });
+  })).accessToken;
 
   const masterOnConfig = await app.inject({
     method: "GET",
@@ -124,7 +83,6 @@ test("roles are enforced exactly on protected routes", { concurrency: false }, a
   assert.equal(waiterOnAdminEvents.statusCode, 403);
   assert.equal(waiterOnAdminEvents.json().error.code, "FORBIDDEN");
 
-  await app.close();
 });
 
 test("admin tokens are bound to their own event", { concurrency: false }, async () => {
@@ -144,8 +102,9 @@ test("admin tokens are bound to their own event", { concurrency: false }, async 
   });
   eventStore.activateEvent(secondEvent.id);
 
-  const app = await buildApp();
-  const adminToken = await loginAdmin(app, {
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const adminToken = await auth.loginAdmin({
     eventId: firstEvent.id,
     username: "chef-a",
     password: "secret-a",
@@ -159,7 +118,6 @@ test("admin tokens are bound to their own event", { concurrency: false }, async 
   assert.equal(configResponse.statusCode, 403);
   assert.equal(configResponse.json().error.code, "FORBIDDEN");
 
-  await app.close();
 });
 
 test("auth login requires an active event and malformed admin tokens are rejected", { concurrency: false }, async () => {
@@ -168,7 +126,7 @@ test("auth login requires an active event and malformed admin tokens are rejecte
   if (activeEvent) {
     eventStore.deactivateEvent(activeEvent.id);
   }
-  const app = await buildApp();
+  const app = await createAppFixture(buildApp);
 
   const noActiveEvent = await app.inject({
     method: "POST",
@@ -196,6 +154,5 @@ test("auth login requires an active event and malformed admin tokens are rejecte
   assert.equal(malformedResponse.statusCode, 401);
   assert.equal(malformedResponse.json().error.code, "UNAUTHORIZED");
 
-  await app.close();
 });
 

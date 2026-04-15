@@ -5,41 +5,12 @@ import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 import { setupEventTestUtils } from "../test-utils/event-test-utils";
 
-const { createTestEvent, createEventPrefix } = setupEventTestUtils(test, eventStore);
-
-async function loginWaiter(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  eventPasscode: string,
-  username: string
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/login",
-    payload: { username, eventPasscode },
-  });
-  assert.equal(login.statusCode, 200);
-  const body = login.json() as {
-    accessToken: string;
-    user: { id: number; username: string };
-  };
-  return {
-    accessToken: body.accessToken,
-    user: body.user,
-  };
-}
-
-async function loginAdmin(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  input: { eventId: number; username: string; password: string }
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/admin/login",
-    payload: input,
-  });
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
+const {
+  createEventPrefix,
+  createActiveDbFixture,
+  createAppFixture,
+  createAuthFixture,
+} = setupEventTestUtils(test, eventStore);
 
 function seedOrderBaseData(dbFilePath: string) {
   const db = new Database(dbFilePath);
@@ -92,8 +63,10 @@ function seedOrderBaseData(dbFilePath: string) {
 
   const categoryId = Number(
     db
-      .prepare("INSERT INTO MenuCategories (name, description, isLocked, weight) VALUES (?, ?, ?, ?)")
-      .run("Food", "", 0, 0).lastInsertRowid
+      .prepare(
+        "INSERT INTO MenuCategories (name, description, isLocked, weight, printer_id, orderDisplay_id) VALUES (?, ?, ?, ?, ?, ?)"
+      )
+      .run("Food", "", 0, 0, null, null).lastInsertRowid
   );
 
   const menuItemId = Number(
@@ -115,7 +88,7 @@ function seedOrderBaseData(dbFilePath: string) {
 }
 
 test("orders endpoints reject unauthorized requests", { concurrency: false }, async () => {
-  const app = await buildApp();
+  const app = await createAppFixture(buildApp);
   const response = await app.inject({
     method: "GET",
     url: "/orders",
@@ -123,20 +96,19 @@ test("orders endpoints reject unauthorized requests", { concurrency: false }, as
 
   assert.equal(response.statusCode, 401);
   assert.equal(response.json().error.code, "UNAUTHORIZED");
-  await app.close();
 });
 
 test("orders endpoints require active event", { concurrency: false }, async () => {
-  const created = createTestEvent({
+  const created = createActiveDbFixture({
     eventName: createEventPrefix("orders-no-active"),
     eventPasscode: "orders-pass",
     adminUsername: "chef",
     adminPassword: "secret123",
-  });
-  eventStore.activateEvent(created.id);
+  }).event;
 
-  const app = await buildApp();
-  const waiter = await loginWaiter(app, "orders-pass", "noactive-waiter");
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiter = await auth.loginWaiter({ username: "noactive-waiter", eventPasscode: "orders-pass" });
 
   eventStore.deactivateEvent(created.id);
 
@@ -148,23 +120,22 @@ test("orders endpoints require active event", { concurrency: false }, async () =
 
   assert.equal(response.statusCode, 409);
   assert.equal(response.json().error.code, "NO_ACTIVE_EVENT");
-  await app.close();
 });
 
 test("waiter can create/list own orders but not access other waiter orders", { concurrency: false }, async () => {
   const eventPasscode = "orders-own-pass";
-  const created = createTestEvent({
+  const created = createActiveDbFixture({
     eventName: createEventPrefix("orders-own"),
     eventPasscode,
     adminUsername: "chef",
     adminPassword: "secret123",
-  });
-  eventStore.activateEvent(created.id);
+  }).event;
   const { tableId, menuItemId, stockItemId } = seedOrderBaseData(created.dbFilePath);
 
-  const app = await buildApp();
-  const waiterA = await loginWaiter(app, eventPasscode, "waiter-a");
-  const waiterB = await loginWaiter(app, eventPasscode, "waiter-b");
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiterA = await auth.loginWaiter({ username: "waiter-a", eventPasscode });
+  const waiterB = await auth.loginWaiter({ username: "waiter-b", eventPasscode });
 
   const createdOrder = await app.inject({
     method: "POST",
@@ -210,25 +181,24 @@ test("waiter can create/list own orders but not access other waiter orders", { c
   assert.equal(stock.quantity, 8);
   db.close();
 
-  await app.close();
 });
 
 test("admin can list all orders and filter by user", { concurrency: false }, async () => {
   const eventPasscode = "orders-admin-pass";
   const adminPassword = "secret123";
-  const created = createTestEvent({
+  const created = createActiveDbFixture({
     eventName: createEventPrefix("orders-admin"),
     eventPasscode,
     adminUsername: "chef",
     adminPassword,
-  });
-  eventStore.activateEvent(created.id);
+  }).event;
   const { tableId, menuItemId } = seedOrderBaseData(created.dbFilePath);
 
-  const app = await buildApp();
-  const waiterA = await loginWaiter(app, eventPasscode, "waiter-admin-a");
-  const waiterB = await loginWaiter(app, eventPasscode, "waiter-admin-b");
-  const adminToken = await loginAdmin(app, {
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiterA = await auth.loginWaiter({ username: "waiter-admin-a", eventPasscode });
+  const waiterB = await auth.loginWaiter({ username: "waiter-admin-b", eventPasscode });
+  const adminToken = await auth.loginAdmin({
     eventId: created.id,
     username: "chef",
     password: adminPassword,
@@ -270,18 +240,16 @@ test("admin can list all orders and filter by user", { concurrency: false }, asy
   assert.equal(filtered.statusCode, 200);
   assert.equal((filtered.json() as { orders: unknown[] }).orders.length, 1);
 
-  await app.close();
 });
 
 test("orders endpoint returns proper edge-case errors", { concurrency: false }, async () => {
   const eventPasscode = "orders-errors-pass";
-  const created = createTestEvent({
+  const created = createActiveDbFixture({
     eventName: createEventPrefix("orders-errors"),
     eventPasscode,
     adminUsername: "chef",
     adminPassword: "secret123",
-  });
-  eventStore.activateEvent(created.id);
+  }).event;
 
   const db = new Database(created.dbFilePath);
   db.exec(`
@@ -333,13 +301,17 @@ test("orders endpoint returns proper edge-case errors", { concurrency: false }, 
 
   const openCategoryId = Number(
     db
-      .prepare("INSERT INTO MenuCategories (name, description, isLocked, weight) VALUES (?, ?, ?, ?)")
-      .run("Open", "", 0, 0).lastInsertRowid
+      .prepare(
+        "INSERT INTO MenuCategories (name, description, isLocked, weight, printer_id, orderDisplay_id) VALUES (?, ?, ?, ?, ?, ?)"
+      )
+      .run("Open", "", 0, 0, null, null).lastInsertRowid
   );
   const lockedCategoryId = Number(
     db
-      .prepare("INSERT INTO MenuCategories (name, description, isLocked, weight) VALUES (?, ?, ?, ?)")
-      .run("Locked", "", 1, 0).lastInsertRowid
+      .prepare(
+        "INSERT INTO MenuCategories (name, description, isLocked, weight, printer_id, orderDisplay_id) VALUES (?, ?, ?, ?, ?, ?)"
+      )
+      .run("Locked", "", 1, 0, null, null).lastInsertRowid
   );
 
   const outOfStockMenuItemId = Number(
@@ -362,8 +334,9 @@ test("orders endpoint returns proper edge-case errors", { concurrency: false }, 
 
   db.close();
 
-  const app = await buildApp();
-  const waiter = await loginWaiter(app, eventPasscode, "waiter-errors");
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiter = await auth.loginWaiter({ username: "waiter-errors", eventPasscode });
 
   const lockedTable = await app.inject({
     method: "POST",
@@ -401,6 +374,5 @@ test("orders endpoint returns proper edge-case errors", { concurrency: false }, 
   assert.equal(outOfStock.statusCode, 422);
   assert.equal(outOfStock.json().error.code, "OUT_OF_STOCK");
 
-  await app.close();
 });
 

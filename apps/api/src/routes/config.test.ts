@@ -4,37 +4,13 @@ import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 import { setupEventTestUtils } from "../test-utils/event-test-utils";
 
-const { createTestEvent, createEventPrefix } = setupEventTestUtils(test, eventStore);
-
-async function loginWaiter(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  eventPasscode: string,
-  username = "waiter"
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/login",
-    payload: { username, eventPasscode },
-  });
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
-
-async function loginAdmin(
-  app: Awaited<ReturnType<typeof buildApp>>,
-  input: { eventId: number; username: string; password: string }
-) {
-  const login = await app.inject({
-    method: "POST",
-    url: "/auth/admin/login",
-    payload: input,
-  });
-  assert.equal(login.statusCode, 200);
-  return (login.json() as { accessToken: string }).accessToken;
-}
+const { createTestEvent, createEventPrefix, createAppFixture, createAuthFixture } = setupEventTestUtils(
+  test,
+  eventStore
+);
 
 test("config endpoints reject unauthorized requests", { concurrency: false }, async () => {
-  const app = await buildApp();
+  const app = await createAppFixture(buildApp);
   const response = await app.inject({
     method: "GET",
     url: "/config",
@@ -42,7 +18,6 @@ test("config endpoints reject unauthorized requests", { concurrency: false }, as
 
   assert.equal(response.statusCode, 401);
   assert.equal(response.json().error.code, "UNAUTHORIZED");
-  await app.close();
 });
 
 test("config endpoints require active event", { concurrency: false }, async () => {
@@ -54,8 +29,9 @@ test("config endpoints require active event", { concurrency: false }, async () =
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const adminToken = await loginAdmin(app, {
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const adminToken = await auth.loginAdmin({
     eventId: created.id,
     username: "chef",
     password: "secret123",
@@ -71,7 +47,6 @@ test("config endpoints require active event", { concurrency: false }, async () =
 
   assert.equal(response.statusCode, 409);
   assert.equal(response.json().error.code, "NO_ACTIVE_EVENT");
-  await app.close();
 });
 
 test("waiter cannot access admin config endpoints", { concurrency: false }, async () => {
@@ -84,8 +59,9 @@ test("waiter cannot access admin config endpoints", { concurrency: false }, asyn
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const waiterToken = await loginWaiter(app, eventPasscode, "waiter-config");
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const waiterToken = (await auth.loginWaiter({ username: "waiter-config", eventPasscode })).accessToken;
 
   const response = await app.inject({
     method: "PATCH",
@@ -96,7 +72,6 @@ test("waiter cannot access admin config endpoints", { concurrency: false }, asyn
 
   assert.equal(response.statusCode, 403);
   assert.equal(response.json().error.code, "FORBIDDEN");
-  await app.close();
 });
 
 test("admin can get and patch config values", { concurrency: false }, async () => {
@@ -108,8 +83,9 @@ test("admin can get and patch config values", { concurrency: false }, async () =
   });
   eventStore.activateEvent(created.id);
 
-  const app = await buildApp();
-  const adminToken = await loginAdmin(app, {
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const adminToken = await auth.loginAdmin({
     eventId: created.id,
     username: "chef",
     password: "secret123",
@@ -178,6 +154,5 @@ test("admin can get and patch config values", { concurrency: false }, async () =
   assert.equal(patchInvalid.statusCode, 400);
   assert.equal(patchInvalid.json().error.code, "VALIDATION_ERROR");
 
-  await app.close();
 });
 
