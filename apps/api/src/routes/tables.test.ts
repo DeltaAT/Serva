@@ -1,6 +1,7 @@
 ﻿import assert from "node:assert/strict";
 import test from "node:test";
 import Database from "better-sqlite3";
+import { PDFDocument } from "pdf-lib";
 import { buildApp } from "../app";
 import { eventStore } from "../domain/state";
 import { setupEventTestUtils } from "../test-utils/event-test-utils";
@@ -212,6 +213,24 @@ test("admin CRUD and bulk table endpoints work", { concurrency: false }, async (
   assert.equal(qrPdf.statusCode, 200);
   assert.match(qrPdf.headers["content-type"] ?? "", /application\/pdf/);
   assert.equal(qrPdf.body.startsWith("%PDF-"), true);
+  assert.match(qrPdf.headers["content-disposition"] ?? "", /tables-qr\.pdf/);
+
+  const qrPdfBytes =
+    (qrPdf as unknown as { rawPayload?: Buffer }).rawPayload ?? Buffer.from(qrPdf.body, "latin1");
+  const qrPdfDoc = await PDFDocument.load(qrPdfBytes);
+  assert.equal(qrPdfDoc.getPages().length, 2, "Expected default 2-up QR layout");
+
+  const qrPdfSingleLayout = await app.inject({
+    method: "GET",
+    url: "/tables/qr.pdf?layout=single",
+    headers: { authorization: `Bearer ${adminToken}` },
+  });
+  assert.equal(qrPdfSingleLayout.statusCode, 200);
+  const qrPdfSingleBytes =
+    (qrPdfSingleLayout as unknown as { rawPayload?: Buffer }).rawPayload ??
+    Buffer.from(qrPdfSingleLayout.body, "latin1");
+  const qrPdfSingleDoc = await PDFDocument.load(qrPdfSingleBytes);
+  assert.equal(qrPdfSingleDoc.getPages().length, 4, "Expected single layout to render one table per page");
 
   const waiterToken = (await auth.loginWaiter({
     username: "crud-waiter",

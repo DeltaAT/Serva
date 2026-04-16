@@ -167,7 +167,8 @@ export function registerPrinterRoutes(app: FastifyInstance) {
         tags: ["printers"],
         operationId: "printersTestPrint",
         summary: "Testdruck senden",
-        description: "Verbindet sich mit dem Drucker und sendet einen einfachen ESC/POS-Testbeleg.",
+        description:
+          "Verbindet sich mit dem Drucker und sendet einen einfachen ESC/POS-Testbeleg. Bei Netzwerkproblemen werden verstaendliche Fehlercodes mit Details geliefert.",
         security: [{ bearerAuth: [] }],
         params: PrinterParamsSchema,
         response: {

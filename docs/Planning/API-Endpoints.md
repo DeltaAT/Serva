@@ -144,6 +144,9 @@ Alle Tische als PDF mit QR Codes exportieren.
 
 **Auth:** `admin`
 
+**Query (optional)**
+- `layout=double|single` *(default: `double`; `double` = 2 QR pro Seite mit Trennlinie)*
+
 ---
 
 ## Menu
@@ -307,6 +310,12 @@ Testdruck.
 **Auth:** `admin`
 
 **Statuscodes:** `200`, `404`, `409`
+
+**Fehlercodes (409 Beispiele):**
+- `PRINTER_CONNECTION_REFUSED`
+- `PRINTER_CONNECTION_TIMEOUT`
+- `PRINTER_HOST_UNREACHABLE`
+- `PRINTER_CONNECTION_FAILED`
 
 ---
 
