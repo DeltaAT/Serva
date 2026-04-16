@@ -53,6 +53,11 @@ Configure in `apps/api/.env`:
 - `MASTER_PASSWORD`
 - `JWT_SECRET`
 
+Optional:
+- `HOST` (default `0.0.0.0`)
+- `PORT` (default `8787`)
+- `PRINTER_TEST_PRINT_TIMEOUT_MS` (default `4000`, allowed range `1000..30000`)
+
 ## Smoke test
 
 Run the end-to-end backend verification script after starting the API:
@@ -116,4 +121,18 @@ Invoke-RestMethod -Method Post -Uri "http://localhost:8787/orders" -Headers $WAI
 - `PATCH /tables/{tableId}` (`admin`)
 - `GET /tables/{tableId}/qr` (`admin`)
 - `GET /tables/qr.pdf` (`admin`)
+
+`GET /tables/qr.pdf` supports optional query `layout=double|single`:
+- `double` (default): 2 tables per page with cut line
+- `single`: 1 table per page
+
+## Printer test-print errors
+
+`POST /printers/{printerId}/test-print` returns detailed `409` API errors for connection problems:
+- `PRINTER_CONNECTION_REFUSED`
+- `PRINTER_CONNECTION_TIMEOUT`
+- `PRINTER_HOST_UNREACHABLE`
+- `PRINTER_CONNECTION_FAILED`
+
+Error payload contains `details.target` and a short `details.hint` for troubleshooting.
 

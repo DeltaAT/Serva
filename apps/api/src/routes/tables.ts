@@ -29,6 +29,17 @@ const TablesQrPdfResponseSchema = z.string().meta({
   description: "PDF document containing QR codes for all tables of the active event.",
 });
 
+const TablesQrPdfQuerySchema = z
+  .object({
+    layout: z
+      .enum(["single", "double"])
+      .optional()
+      .describe("PDF layout: single = 1 Tisch pro Seite, double = 2 Tische pro Seite"),
+  })
+  .strict();
+
+type TablesQrPdfQuery = z.infer<typeof TablesQrPdfQuerySchema>;
+
 function escapeXml(value: string) {
   return value
     .replaceAll("&", "&amp;")
@@ -51,47 +62,113 @@ function buildTableQrSvg(input: { id: number; name: string }) {
 </svg>`;
 }
 
-async function renderTableHalf(input: {
+function fitTextSize(input: {
+  text: string;
+  font: Awaited<ReturnType<PDFDocument["embedFont"]>>;
+  maxWidth: number;
+  minSize: number;
+  maxSize: number;
+}) {
+  const { text, font, maxWidth, minSize, maxSize } = input;
+  for (let size = maxSize; size >= minSize; size -= 1) {
+    if (font.widthOfTextAtSize(text, size) <= maxWidth) {
+      return size;
+    }
+  }
+  return minSize;
+}
+
+function drawCutLine(input: {
+  page: ReturnType<PDFDocument["addPage"]>;
+  y: number;
+  fromX: number;
+  toX: number;
+}) {
+  const { page, y, fromX, toX } = input;
+  const segment = 10;
+  const gap = 5;
+  let cursor = fromX;
+  while (cursor < toX) {
+    const end = Math.min(cursor + segment, toX);
+    page.drawLine({
+      start: { x: cursor, y },
+      end: { x: end, y },
+      thickness: 1,
+      color: rgb(0.74, 0.74, 0.74),
+    });
+    cursor = end + gap;
+  }
+}
+
+async function renderTableSlot(input: {
   pdfDoc: PDFDocument;
   page: ReturnType<PDFDocument["addPage"]>;
   nameFont: Awaited<ReturnType<PDFDocument["embedFont"]>>;
+  bodyFont: Awaited<ReturnType<PDFDocument["embedFont"]>>;
   table: { id: number; name: string };
-  slotBottomY: number;
+  slotX: number;
+  slotY: number;
+  slotWidth: number;
   slotHeight: number;
 }) {
-  const { pdfDoc, page, nameFont, table, slotBottomY, slotHeight } = input;
-  const pageWidth = page.getWidth();
-  const title = `${table.name}`;
-  const titleSize = 72;
-  const titleTopPadding = 24;
-  const titleBottomGap = 22;
-  const slotBottomPadding = 24;
-  const qrFramePadding = 8;
+  const { pdfDoc, page, nameFont, bodyFont, table, slotX, slotY, slotWidth, slotHeight } = input;
+  const title = table.name;
+  const titleSize = fitTextSize({
+    text: title,
+    font: nameFont,
+    maxWidth: slotWidth - 56,
+    minSize: 34,
+    maxSize: 76,
+  });
+  const titleTopPadding = 28;
+  const metaGap = 10;
+  const infoTextSize = 13;
+  const qrFramePadding = 10;
+
+  page.drawRectangle({
+    x: slotX,
+    y: slotY,
+    width: slotWidth,
+    height: slotHeight,
+    borderWidth: 1,
+    borderColor: rgb(0.84, 0.84, 0.84),
+  });
+
   const titleWidth = nameFont.widthOfTextAtSize(title, titleSize);
-  const titleY = slotBottomY + slotHeight - titleTopPadding - titleSize;
+  const titleY = slotY + slotHeight - titleTopPadding - titleSize;
   page.drawText(title, {
-    x: Math.max(24, (pageWidth - titleWidth) / 2),
+    x: slotX + (slotWidth - titleWidth) / 2,
     y: titleY,
     size: titleSize,
     font: nameFont,
-    color: rgb(0.1, 0.1, 0.1),
+    color: rgb(0.08, 0.08, 0.08),
+  });
+
+  const infoText = `Tisch ${table.name}  |  ID ${table.id}  |  Serva QR`;
+  const infoWidth = bodyFont.widthOfTextAtSize(infoText, infoTextSize);
+  page.drawText(infoText, {
+    x: slotX + (slotWidth - infoWidth) / 2,
+    y: titleY - metaGap - infoTextSize,
+    size: infoTextSize,
+    font: bodyFont,
+    color: rgb(0.32, 0.32, 0.32),
   });
 
   const qrPayload = JSON.stringify({ tableId: table.id, tableName: table.name });
   const qrDataUrl = await QRCode.toDataURL(qrPayload, {
-    errorCorrectionLevel: "M",
-    margin: 1,
-    width: 1000,
+    errorCorrectionLevel: "H",
+    margin: 2,
+    width: 1200,
   });
   const qrBase64 = qrDataUrl.slice(qrDataUrl.indexOf(",") + 1);
   const qrImage = await pdfDoc.embedPng(Buffer.from(qrBase64, "base64"));
 
-  const qrAreaTopY = titleY - titleBottomGap;
-  const qrAreaBottomY = slotBottomY + slotBottomPadding;
-  const availableQrHeight = Math.max(80, qrAreaTopY - qrAreaBottomY);
-  const maxQrSize = Math.min(availableQrHeight, pageWidth - 120, 340);
-  const qrSize = Math.max(120, maxQrSize);
-  const qrX = (pageWidth - qrSize) / 2;
+  const qrAreaTopY = titleY - metaGap - infoTextSize - 24;
+  const qrAreaBottomY = slotY + 24;
+  const availableQrHeight = Math.max(120, qrAreaTopY - qrAreaBottomY);
+  const maxQrSize = Math.min(availableQrHeight, slotWidth - 96, 340);
+  const qrSize = Math.max(150, maxQrSize);
+  const qrX = slotX + (slotWidth - qrSize) / 2;
   const qrY = qrAreaBottomY + Math.max(0, (availableQrHeight - qrSize) / 2);
 
   page.drawRectangle({
@@ -110,10 +187,16 @@ async function renderTableHalf(input: {
   });
 }
 
-async function buildTablesQrPdf(tables: Array<{ id: number; name: string }>) {
+async function buildTablesQrPdf(
+  tables: Array<{ id: number; name: string }>,
+  options: { layout?: "single" | "double" }
+) {
   const pdfDoc = await PDFDocument.create();
   const nameFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const bodyFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const pageSize: [number, number] = [595.28, 841.89];
+  const layout = options.layout ?? "double";
+  const pagePadding = 18;
 
   if (tables.length === 0) {
     const page = pdfDoc.addPage(pageSize);
@@ -127,35 +210,73 @@ async function buildTablesQrPdf(tables: Array<{ id: number; name: string }>) {
     return Buffer.from(await pdfDoc.save());
   }
 
+  if (layout === "single") {
+    for (const table of tables) {
+      const page = pdfDoc.addPage(pageSize);
+      await renderTableSlot({
+        pdfDoc,
+        page,
+        nameFont,
+        bodyFont,
+        table,
+        slotX: pagePadding,
+        slotY: pagePadding,
+        slotWidth: page.getWidth() - pagePadding * 2,
+        slotHeight: page.getHeight() - pagePadding * 2,
+      });
+    }
+
+    return Buffer.from(await pdfDoc.save());
+  }
+
   for (let index = 0; index < tables.length; index += 2) {
     const page = pdfDoc.addPage(pageSize);
     const pageWidth = page.getWidth();
     const pageHeight = page.getHeight();
-    const slotHeight = pageHeight / 2;
+    const dividerY = pageHeight / 2;
+    const slotHeight = pageHeight / 2 - pagePadding - 6;
+    const slotWidth = pageWidth - pagePadding * 2;
 
-    page.drawLine({
-      start: { x: 24, y: slotHeight },
-      end: { x: pageWidth - 24, y: slotHeight },
-      thickness: 1,
-      color: rgb(0.75, 0.75, 0.75),
+    drawCutLine({
+      page,
+      y: dividerY,
+      fromX: pagePadding,
+      toX: pageWidth - pagePadding,
     });
 
-    await renderTableHalf({
+    const cutHint = "Schnittlinie";
+    const cutHintSize = 10;
+    const cutHintWidth = bodyFont.widthOfTextAtSize(cutHint, cutHintSize);
+    page.drawText(cutHint, {
+      x: (pageWidth - cutHintWidth) / 2,
+      y: dividerY + 3,
+      size: cutHintSize,
+      font: bodyFont,
+      color: rgb(0.5, 0.5, 0.5),
+    });
+
+    await renderTableSlot({
       pdfDoc,
       page,
       nameFont,
+      bodyFont,
       table: tables[index],
-      slotBottomY: slotHeight,
+      slotX: pagePadding,
+      slotY: dividerY + 6,
+      slotWidth,
       slotHeight,
     });
 
     if (tables[index + 1]) {
-      await renderTableHalf({
+      await renderTableSlot({
         pdfDoc,
         page,
         nameFont,
+        bodyFont,
         table: tables[index + 1],
-        slotBottomY: 0,
+        slotX: pagePadding,
+        slotY: pagePadding,
+        slotWidth,
         slotHeight,
       });
     }
@@ -316,7 +437,7 @@ export function registerTableRoutes(app: FastifyInstance) {
     }
   );
 
-  app.get(
+  app.get<{ Querystring: TablesQrPdfQuery }>(
     "/tables/qr.pdf",
     {
       config: {
@@ -328,8 +449,9 @@ export function registerTableRoutes(app: FastifyInstance) {
         operationId: "tablesQrExportPdf",
         summary: "QR-PDF fuer alle Tische exportieren",
         description:
-          "Erzeugt eine PDF fuer alle Tische des aktiven Events (pro Seite zwei QR-Codes mit Trennlinie und Tischname).",
+          "Erzeugt eine PDF fuer alle Tische des aktiven Events. Standardlayout: zwei QR-Codes pro Seite mit Trennlinie.",
         security: [{ bearerAuth: [] }],
+        querystring: TablesQrPdfQuerySchema,
         response: {
           200: TablesQrPdfResponseSchema,
           401: ApiErrorEnvelopeSchema,
@@ -338,9 +460,14 @@ export function registerTableRoutes(app: FastifyInstance) {
         },
       },
     },
-    async (_request, reply) => {
+    async (request, reply) => {
       const tables = tableStore.listTables({});
-      const pdf = await buildTablesQrPdf(tables.map((table) => ({ id: table.id, name: table.name })));
+      const pdf = await buildTablesQrPdf(
+        tables.map((table) => ({ id: table.id, name: table.name })),
+        {
+          layout: request.query.layout,
+        }
+      );
       return reply
         .header("Content-Disposition", "attachment; filename=tables-qr.pdf")
         .type("application/pdf")

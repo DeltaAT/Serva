@@ -52,6 +52,34 @@ async function createFakeThermalPrinterServer() {
   };
 }
 
+async function reservePortAndClose() {
+  const server = net.createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Failed to reserve local TCP port");
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+
+  return address.port;
+}
+
 function seedMenuCategoryWithPrinter(dbFilePath: string, printerId: number) {
   const db = new Database(dbFilePath);
   db.exec(`
@@ -252,5 +280,56 @@ test("admin can create/list printers and send test print", { concurrency: false 
   } finally {
     await fakePrinter.close();
   }
+});
+
+test("test-print returns understandable connection errors", { concurrency: false }, async () => {
+  const closedPort = await reservePortAndClose();
+  const adminPassword = "secret123";
+  const created = createTestEvent({
+    eventName: createEventPrefix("printers-connection-error"),
+    eventPasscode: "printers-connection-error-pass",
+    adminUsername: "chef",
+    adminPassword,
+  });
+  eventStore.activateEvent(created.id);
+
+  const app = await createAppFixture(buildApp);
+  const auth = createAuthFixture(app);
+  const adminToken = await auth.loginAdmin({
+    eventId: created.id,
+    username: "chef",
+    password: adminPassword,
+  });
+
+  const createPrinter = await app.inject({
+    method: "POST",
+    url: "/printers",
+    headers: { authorization: `Bearer ${adminToken}` },
+    payload: {
+      name: "Offline Printer",
+      ipAddress: "127.0.0.1",
+      connectionDetails: String(closedPort),
+    },
+  });
+  assert.equal(createPrinter.statusCode, 201);
+  const printerId = createPrinter.json().id as number;
+
+  const response = await app.inject({
+    method: "POST",
+    url: `/printers/${printerId}/test-print`,
+    headers: { authorization: `Bearer ${adminToken}` },
+  });
+
+  assert.equal(response.statusCode, 409);
+  const body = response.json() as {
+    error: { code: string; message: string; details?: { target?: string; hint?: string } };
+  };
+  assert.ok(
+    ["PRINTER_CONNECTION_FAILED", "PRINTER_CONNECTION_REFUSED"].includes(body.error.code),
+    `Unexpected error code: ${body.error.code}`
+  );
+  assert.match(body.error.message, /Printer/);
+  assert.match(body.error.details?.target ?? "", /127\.0\.0\.1:/);
+  assert.ok((body.error.details?.hint ?? "").length > 0);
 });
 

@@ -95,6 +95,91 @@ export class PrinterStore {
     return 9100;
   }
 
+  private getTestPrintTimeoutMs() {
+    const raw = process.env.PRINTER_TEST_PRINT_TIMEOUT_MS;
+    if (!raw) {
+      return 4000;
+    }
+
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 1000 || parsed > 30000) {
+      return 4000;
+    }
+
+    return parsed;
+  }
+
+  private mapPrinterConnectionError(input: {
+    error: unknown;
+    printerName: string;
+    target: string;
+  }): ApiError {
+    const { error, printerName, target } = input;
+    const reason = error instanceof Error ? error.message : String(error);
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+
+    if (code === "ECONNREFUSED") {
+      return new ApiError(
+        409,
+        "PRINTER_CONNECTION_REFUSED",
+        `Printer '${printerName}' rejected the TCP connection at ${target}.`,
+        {
+          target,
+          reason,
+          hint: "Check IP/port configuration and ensure the printer is powered on.",
+        }
+      );
+    }
+
+    if (code === "ETIMEDOUT") {
+      return new ApiError(
+        409,
+        "PRINTER_CONNECTION_TIMEOUT",
+        `Connection to printer '${printerName}' timed out (${target}).`,
+        {
+          target,
+          reason,
+          hint: "Ensure the printer is reachable in the same network and not blocked by a firewall.",
+        }
+      );
+    }
+
+    if (code === "EHOSTUNREACH" || code === "ENETUNREACH") {
+      return new ApiError(
+        409,
+        "PRINTER_HOST_UNREACHABLE",
+        `Printer host for '${printerName}' is unreachable (${target}).`,
+        {
+          target,
+          reason,
+          hint: "Verify network routing and printer IP address.",
+        }
+      );
+    }
+
+    return new ApiError(
+      409,
+      "PRINTER_CONNECTION_FAILED",
+      `Could not connect to printer '${printerName}' at ${target}.`,
+      {
+        target,
+        reason,
+        hint: "Check printer connectivity and connectionDetails (port).",
+      }
+    );
+  }
+
+  private createThermalPrinter(target: string) {
+    return new ThermalPrinter({
+      type: PrinterTypes.EPSON,
+      interface: `tcp://${target}`,
+      options: { timeout: this.getTestPrintTimeoutMs() },
+    });
+  }
+
   listPrinters(): PrinterDto[] {
     const db = this.openActiveEventDb();
     try {
@@ -222,18 +307,29 @@ export class PrinterStore {
       }
 
       const port = this.getPort(printerRow.connectionDetails);
-      const printer = new ThermalPrinter({
-        type: PrinterTypes.EPSON,
-        interface: `tcp://${printerRow.ipAddress}:${port}`,
-        options: { timeout: 4000 },
-      });
+      const target = `${printerRow.ipAddress}:${port}`;
+      const printer = this.createThermalPrinter(target);
 
-      const connected = await printer.isPrinterConnected();
+      let connected = false;
+      try {
+        connected = await printer.isPrinterConnected();
+      } catch (error) {
+        throw this.mapPrinterConnectionError({
+          error,
+          printerName: printerRow.name,
+          target,
+        });
+      }
+
       if (!connected) {
         throw new ApiError(
           409,
           "PRINTER_CONNECTION_FAILED",
-          "Could not connect to thermal printer"
+          `No response from printer '${printerRow.name}' at ${target}.`,
+          {
+            target,
+            hint: "Check IP/port configuration and printer power/network state.",
+          }
         );
       }
 
@@ -246,7 +342,7 @@ export class PrinterStore {
 
       printer.alignLeft();
       printer.println(`Printer: ${printerRow.name}`);
-      printer.println(`Address: ${printerRow.ipAddress}:${port}`);
+      printer.println(`Address: ${target}`);
       printer.println(`Time: ${now}`);
       printer.newLine();
 
@@ -284,7 +380,16 @@ export class PrinterStore {
       printer.newLine();
       printer.cut();
 
-      await printer.execute();
+      try {
+        await printer.execute();
+      } catch (error) {
+        throw this.mapPrinterConnectionError({
+          error,
+          printerName: printerRow.name,
+          target,
+        });
+      }
+
       return {
         ok: true,
         message: "Test print sent successfully",
@@ -294,8 +399,10 @@ export class PrinterStore {
         throw error;
       }
 
-      throw new ApiError(409, "PRINTER_CONNECTION_FAILED", "Thermal printer request failed", {
-        reason: error instanceof Error ? error.message : String(error),
+      throw this.mapPrinterConnectionError({
+        error,
+        printerName: "unknown",
+        target: "unknown",
       });
     } finally {
       db.close();
